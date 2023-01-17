@@ -1,0 +1,17 @@
+# Simvision/Xcelium stuff
+.simvision
+xrun.*
+xcelium.d/
+restore/
+*.diag
+*.vcd
+*.vpd
+*.log
+DVEfiles/
+*.dsn
+*.trn
+novas.conf
+novas.rc
+verdiLog/
+*.history
+.bpad/

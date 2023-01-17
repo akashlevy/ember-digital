@@ -1,0 +1,208 @@
+library(analog_rram) { 
+  technology (cmos) ;
+  delay_model : table_lookup ;
+  time_unit : 1ns ; 
+  voltage_unit : 1V ; 
+  current_unit : 1mA ; 
+  capacitive_load_unit(1, pf) ;
+  pulling_resistance_unit : 1kohm ; 
+  leakage_power_unit : 1nW ; 
+  nom_process : 1 ; 
+  nom_temperature : 25 ; 
+  nom_voltage : 1.1 ; 
+  default_cell_leakage_power : 0 ; 
+  default_fanout_load : 1 ; 
+  default_leakage_power_density : 0 ; 
+  default_max_transition : 1.5 ; 
+
+  default_inout_pin_cap : 0 ;
+  default_input_pin_cap : 0 ;
+  default_output_pin_cap : 0 ;
+
+  input_threshold_pct_fall : 50 ; 
+  input_threshold_pct_rise : 50 ; 
+  output_threshold_pct_fall : 50 ; 
+  output_threshold_pct_rise : 50 ; 
+  slew_derate_from_library : 0.5 ; 
+  slew_lower_threshold_pct_fall : 30 ; 
+  slew_lower_threshold_pct_rise : 30 ; 
+  slew_upper_threshold_pct_fall : 70 ; 
+  slew_upper_threshold_pct_rise : 70 ; 
+  
+  voltage_map(vdd, 0.9) ;
+  voltage_map(vdd_test, 0.9) ;
+  voltage_map(vddio, 3.3) ;
+  voltage_map(vdd_dac, 1) ;
+  voltage_map(vddio_dac, 3.3) ;
+  voltage_map(vsa, 0.9) ;
+  voltage_map(vss, 0) ;
+  voltage_map(iref_test, 3.3) ;
+  voltage_map(bl_source_pin, 3.3) ;
+  voltage_map(sl_source_pin, 3.3) ;
+  voltage_map(wl_source_pin, 3.3) ;
+
+  type(di) {
+    base_type : array ;
+    data_type : bit ;
+    bit_width : 48 ;
+    bit_from : 47 ;
+    downto : true ;
+  }
+
+  type(sa_do) {
+    base_type : array ;
+    data_type : bit ;
+    bit_width : 48 ;
+    bit_from : 47 ;
+    downto : true ;
+  }
+
+  type(rram_addr) {
+    base_type : array ;
+    data_type : bit ;
+    bit_width : 16 ;
+    bit_from : 15 ;
+    downto : true ;
+  }
+
+  type(bsl_dac_config) {
+    base_type : array ;
+    data_type : bit ;
+    bit_width : 5 ;
+    bit_from : 4 ;
+    downto : true ;
+  }
+
+  type(read_dac_config) {
+    base_type : array ;
+    data_type : bit ;
+    bit_width : 4 ;
+    bit_from : 3 ;
+    downto : true ;
+  }
+
+  type(wl_dac_config) {
+    base_type : array ;
+    data_type : bit ;
+    bit_width : 8 ;
+    bit_from : 7 ;
+    downto : true ;
+  }
+
+  type(clamp_ref) {
+    base_type : array ;
+    data_type : bit ;
+    bit_width : 6 ;
+    bit_from : 5 ;
+    downto : true ;
+  }
+
+  type(read_ref) {
+    base_type : array ;
+    data_type : bit ;
+    bit_width : 6 ;
+    bit_from : 5 ;
+    downto : true ;
+  }
+
+  operating_conditions(default) { 
+    process : 1 ; 
+    temperature : 25 ; 
+    voltage : 1.1 ; 
+  }
+  default_operating_conditions : default ; 
+  
+  cell(rram_1p3Mb) { 
+    area : 0 ;
+    dont_use   : true ;
+    map_only   : true ;
+    dont_touch : true ;
+    memory(){ 
+      type : ram ;
+      address_width : 16 ;
+      word_width : 48 ;
+    }
+    pg_pin(vdd) { 
+      voltage_name : vdd ; 
+      pg_type : primary_power ; 
+    }
+    pg_pin(vddio) { 
+      voltage_name : vddio ; 
+      pg_type : primary_power ; 
+    }
+    pg_pin(vdd_dac) { 
+      voltage_name : vdd_dac ; 
+      pg_type : primary_power ; 
+    }
+    pg_pin(vddio_dac) { 
+      voltage_name : vddio_dac ; 
+      pg_type : primary_power ; 
+    }
+    pg_pin(vsa) { 
+      voltage_name : vsa ; 
+      pg_type : primary_power ; 
+    }
+    pg_pin(wl_source_pin) { 
+      voltage_name : wl_source_pin ; 
+      pg_type : primary_power ; 
+    }
+    pg_pin(bl_source_pin) { 
+      voltage_name : bl_source_pin ; 
+      pg_type : primary_power ; 
+    }
+    pg_pin(sl_source_pin) { 
+      voltage_name : sl_source_pin ; 
+      pg_type : primary_power ; 
+    }
+    pg_pin(vss) { 
+      voltage_name : vss ; 
+      pg_type : primary_ground ; 
+    }
+    ${pintext}
+  }
+
+  cell(rdac_test_struct) {
+    area : 0 ;
+    dont_use   : true ;
+    map_only   : true ;
+    dont_touch : true ;
+    pg_pin(vdd_test) { 
+      voltage_name : vdd_test ; 
+      pg_type : primary_power ; 
+    }
+    pg_pin(iref_test) { 
+      voltage_name : iref_test ; 
+      pg_type : primary_power ; 
+    }
+    pg_pin(vss) { 
+      voltage_name : vss ; 
+      pg_type : primary_ground ; 
+    }
+    bus(clamp_ref) {
+      bus_type : clamp_ref ;
+      direction : input ;
+      pin(clamp_ref[5]) {
+        capacitance : 0.00363342 ;
+      }
+      pin(clamp_ref[4]) {
+        capacitance : 0.00331384 ;
+      }
+      pin(clamp_ref[3]) {
+        capacitance : 0.00442092 ;
+      }
+      pin(clamp_ref[2]) {
+        capacitance : 0.00396463 ;
+      }
+      pin(clamp_ref[1]) {
+        capacitance : 0.00363342 ;
+      }
+      pin(clamp_ref[0]) {
+        capacitance : 0.00331384 ;
+      }
+    }
+    pin(sa_en) {
+      direction : input ;
+      capacitance : 0.001 ;
+    }
+  }
+}

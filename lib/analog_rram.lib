@@ -1,0 +1,759 @@
+library(analog_rram) { 
+  technology (cmos) ;
+  delay_model : table_lookup ;
+  time_unit : 1ns ; 
+  voltage_unit : 1V ; 
+  current_unit : 1mA ; 
+  capacitive_load_unit(1, pf) ;
+  pulling_resistance_unit : 1kohm ; 
+  leakage_power_unit : 1nW ; 
+  nom_process : 1 ; 
+  nom_temperature : 25 ; 
+  nom_voltage : 1.1 ; 
+  default_cell_leakage_power : 0 ; 
+  default_fanout_load : 1 ; 
+  default_leakage_power_density : 0 ; 
+  default_max_transition : 1.5 ; 
+
+  default_inout_pin_cap : 0 ;
+  default_input_pin_cap : 0 ;
+  default_output_pin_cap : 0 ;
+
+  input_threshold_pct_fall : 50 ; 
+  input_threshold_pct_rise : 50 ; 
+  output_threshold_pct_fall : 50 ; 
+  output_threshold_pct_rise : 50 ; 
+  slew_derate_from_library : 0.5 ; 
+  slew_lower_threshold_pct_fall : 30 ; 
+  slew_lower_threshold_pct_rise : 30 ; 
+  slew_upper_threshold_pct_fall : 70 ; 
+  slew_upper_threshold_pct_rise : 70 ; 
+  
+  voltage_map(vdd, 0.9) ;
+  voltage_map(vdd_test, 0.9) ;
+  voltage_map(vddio, 3.3) ;
+  voltage_map(vdd_dac, 1) ;
+  voltage_map(vddio_dac, 3.3) ;
+  voltage_map(vsa, 0.9) ;
+  voltage_map(vss, 0) ;
+  voltage_map(iref_test, 3.3) ;
+  voltage_map(bl_source_pin, 3.3) ;
+  voltage_map(sl_source_pin, 3.3) ;
+  voltage_map(wl_source_pin, 3.3) ;
+
+  type(di) {
+    base_type : array ;
+    data_type : bit ;
+    bit_width : 48 ;
+    bit_from : 47 ;
+    downto : true ;
+  }
+
+  type(sa_do) {
+    base_type : array ;
+    data_type : bit ;
+    bit_width : 48 ;
+    bit_from : 47 ;
+    downto : true ;
+  }
+
+  type(rram_addr) {
+    base_type : array ;
+    data_type : bit ;
+    bit_width : 16 ;
+    bit_from : 15 ;
+    downto : true ;
+  }
+
+  type(bsl_dac_config) {
+    base_type : array ;
+    data_type : bit ;
+    bit_width : 5 ;
+    bit_from : 4 ;
+    downto : true ;
+  }
+
+  type(read_dac_config) {
+    base_type : array ;
+    data_type : bit ;
+    bit_width : 4 ;
+    bit_from : 3 ;
+    downto : true ;
+  }
+
+  type(wl_dac_config) {
+    base_type : array ;
+    data_type : bit ;
+    bit_width : 8 ;
+    bit_from : 7 ;
+    downto : true ;
+  }
+
+  type(clamp_ref) {
+    base_type : array ;
+    data_type : bit ;
+    bit_width : 6 ;
+    bit_from : 5 ;
+    downto : true ;
+  }
+
+  type(read_ref) {
+    base_type : array ;
+    data_type : bit ;
+    bit_width : 6 ;
+    bit_from : 5 ;
+    downto : true ;
+  }
+
+  operating_conditions(default) { 
+    process : 1 ; 
+    temperature : 25 ; 
+    voltage : 1.1 ; 
+  }
+  default_operating_conditions : default ; 
+  
+  cell(rram_1p3Mb) { 
+    area : 0 ;
+    dont_use   : true ;
+    map_only   : true ;
+    dont_touch : true ;
+    memory(){ 
+      type : ram ;
+      address_width : 16 ;
+      word_width : 48 ;
+    }
+    pg_pin(vdd) { 
+      voltage_name : vdd ; 
+      pg_type : primary_power ; 
+    }
+    pg_pin(vddio) { 
+      voltage_name : vddio ; 
+      pg_type : primary_power ; 
+    }
+    pg_pin(vdd_dac) { 
+      voltage_name : vdd_dac ; 
+      pg_type : primary_power ; 
+    }
+    pg_pin(vddio_dac) { 
+      voltage_name : vddio_dac ; 
+      pg_type : primary_power ; 
+    }
+    pg_pin(vsa) { 
+      voltage_name : vsa ; 
+      pg_type : primary_power ; 
+    }
+    pg_pin(wl_source_pin) { 
+      voltage_name : wl_source_pin ; 
+      pg_type : primary_power ; 
+    }
+    pg_pin(bl_source_pin) { 
+      voltage_name : bl_source_pin ; 
+      pg_type : primary_power ; 
+    }
+    pg_pin(sl_source_pin) { 
+      voltage_name : sl_source_pin ; 
+      pg_type : primary_power ; 
+    }
+    pg_pin(vss) { 
+      voltage_name : vss ; 
+      pg_type : primary_ground ; 
+    }
+    pin(aclk) {
+      direction : input ;
+      capacitance : 0.00331428 ;
+    }
+    pin(bl_en) {
+      direction : input ;
+      capacitance : 0.00331764 ;
+    }
+    pin(bleed_en) {
+      direction : input ;
+      capacitance : 0.00331764 ;
+    }
+    bus(bsl_dac_config) {
+      bus_type : bsl_dac_config ;
+      direction : input ;
+      pin(bsl_dac_config[0]) {
+        capacitance : 0.00331384 ;
+      }
+      pin(bsl_dac_config[1]) {
+        capacitance : 0.00363342 ;
+      }
+      pin(bsl_dac_config[2]) {
+        capacitance : 0.00396463 ;
+      }
+      pin(bsl_dac_config[3]) {
+        capacitance : 0.00442092 ;
+      }
+      pin(bsl_dac_config[4]) {
+        capacitance : 0.0036628299999999997 ;
+      }
+    }
+    pin(bsl_dac_en) {
+      direction : input ;
+      capacitance : 0.00404143 ;
+    }
+    bus(clamp_ref) {
+      bus_type : clamp_ref ;
+      direction : input ;
+      pin(clamp_ref[0]) {
+        capacitance : 0.00331384 ;
+      }
+      pin(clamp_ref[1]) {
+        capacitance : 0.00363342 ;
+      }
+      pin(clamp_ref[2]) {
+        capacitance : 0.00396463 ;
+      }
+      pin(clamp_ref[3]) {
+        capacitance : 0.00442092 ;
+      }
+      pin(clamp_ref[4]) {
+        capacitance : 0.00331384 ;
+      }
+      pin(clamp_ref[5]) {
+        capacitance : 0.00363342 ;
+      }
+    }
+    bus(di) {
+      bus_type : di ;
+      direction : input ;
+      memory_write() { 
+        address : rram_addr ;
+        clocked_on : aclk ; 
+      }
+      pin(di[0]) {
+        capacitance : 0.0032979899999999998 ;
+      }
+      pin(di[1]) {
+        capacitance : 0.0036641399999999998 ;
+      }
+      pin(di[2]) {
+        capacitance : 0.00405183 ;
+      }
+      pin(di[3]) {
+        capacitance : 0.00450109 ;
+      }
+      pin(di[4]) {
+        capacitance : 0.00331384 ;
+      }
+      pin(di[5]) {
+        capacitance : 0.00363342 ;
+      }
+      pin(di[6]) {
+        capacitance : 0.00397233 ;
+      }
+      pin(di[7]) {
+        capacitance : 0.00442862 ;
+      }
+      pin(di[8]) {
+        capacitance : 0.00331764 ;
+      }
+      pin(di[9]) {
+        capacitance : 0.0036628299999999997 ;
+      }
+      pin(di[10]) {
+        capacitance : 0.00404914 ;
+      }
+      pin(di[11]) {
+        capacitance : 0.00449693 ;
+      }
+      pin(di[12]) {
+        capacitance : 0.00331384 ;
+      }
+      pin(di[13]) {
+        capacitance : 0.00363342 ;
+      }
+      pin(di[14]) {
+        capacitance : 0.00396463 ;
+      }
+      pin(di[15]) {
+        capacitance : 0.00442092 ;
+      }
+      pin(di[16]) {
+        capacitance : 0.00331764 ;
+      }
+      pin(di[17]) {
+        capacitance : 0.0036628299999999997 ;
+      }
+      pin(di[18]) {
+        capacitance : 0.00404143 ;
+      }
+      pin(di[19]) {
+        capacitance : 0.0044881899999999995 ;
+      }
+      pin(di[20]) {
+        capacitance : 0.00331384 ;
+      }
+      pin(di[21]) {
+        capacitance : 0.00363342 ;
+      }
+      pin(di[22]) {
+        capacitance : 0.00396463 ;
+      }
+      pin(di[23]) {
+        capacitance : 0.00442092 ;
+      }
+      pin(di[24]) {
+        capacitance : 0.00331764 ;
+      }
+      pin(di[25]) {
+        capacitance : 0.0036628299999999997 ;
+      }
+      pin(di[26]) {
+        capacitance : 0.00404143 ;
+      }
+      pin(di[27]) {
+        capacitance : 0.0044881899999999995 ;
+      }
+      pin(di[28]) {
+        capacitance : 0.00331384 ;
+      }
+      pin(di[29]) {
+        capacitance : 0.00363342 ;
+      }
+      pin(di[30]) {
+        capacitance : 0.00396463 ;
+      }
+      pin(di[31]) {
+        capacitance : 0.00442092 ;
+      }
+      pin(di[32]) {
+        capacitance : 0.00331764 ;
+      }
+      pin(di[33]) {
+        capacitance : 0.0036628299999999997 ;
+      }
+      pin(di[34]) {
+        capacitance : 0.00404143 ;
+      }
+      pin(di[35]) {
+        capacitance : 0.0044881899999999995 ;
+      }
+      pin(di[36]) {
+        capacitance : 0.00331384 ;
+      }
+      pin(di[37]) {
+        capacitance : 0.00363342 ;
+      }
+      pin(di[38]) {
+        capacitance : 0.00396463 ;
+      }
+      pin(di[39]) {
+        capacitance : 0.00442092 ;
+      }
+      pin(di[40]) {
+        capacitance : 0.00331764 ;
+      }
+      pin(di[41]) {
+        capacitance : 0.0036628299999999997 ;
+      }
+      pin(di[42]) {
+        capacitance : 0.00404143 ;
+      }
+      pin(di[43]) {
+        capacitance : 0.0044881899999999995 ;
+      }
+      pin(di[44]) {
+        capacitance : 0.00331384 ;
+      }
+      pin(di[45]) {
+        capacitance : 0.00363342 ;
+      }
+      pin(di[46]) {
+        capacitance : 0.00396463 ;
+      }
+      pin(di[47]) {
+        capacitance : 0.00442092 ;
+      }
+    }
+    pin(man) {
+      direction : input ;
+      capacitance : 0.00366417 ;
+    }
+    bus(read_dac_config) {
+      bus_type : read_dac_config ;
+      direction : input ;
+      pin(read_dac_config[0]) {
+        capacitance : 0.00331764 ;
+      }
+      pin(read_dac_config[1]) {
+        capacitance : 0.0036628299999999997 ;
+      }
+      pin(read_dac_config[2]) {
+        capacitance : 0.00404143 ;
+      }
+      pin(read_dac_config[3]) {
+        capacitance : 0.0044881899999999995 ;
+      }
+    }
+    pin(read_dac_en) {
+      direction : input ;
+      capacitance : 0.0036628299999999997 ;
+    }
+    bus(read_ref) {
+      bus_type : read_ref ;
+      direction : input ;
+      pin(read_ref[0]) {
+        capacitance : 0.00331764 ;
+      }
+      pin(read_ref[1]) {
+        capacitance : 0.0036628299999999997 ;
+      }
+      pin(read_ref[2]) {
+        capacitance : 0.00404143 ;
+      }
+      pin(read_ref[3]) {
+        capacitance : 0.0044881899999999995 ;
+      }
+      pin(read_ref[4]) {
+        capacitance : 0.00396463 ;
+      }
+      pin(read_ref[5]) {
+        capacitance : 0.00442092 ;
+      }
+    }
+    bus(rram_addr) {
+      bus_type : rram_addr ;
+      direction : input ;
+      pin(rram_addr[0]) {
+        capacitance : 0.00331764 ;
+      }
+      pin(rram_addr[1]) {
+        capacitance : 0.0036628299999999997 ;
+      }
+      pin(rram_addr[2]) {
+        capacitance : 0.00404143 ;
+      }
+      pin(rram_addr[3]) {
+        capacitance : 0.0044881899999999995 ;
+      }
+      pin(rram_addr[4]) {
+        capacitance : 0.00331384 ;
+      }
+      pin(rram_addr[5]) {
+        capacitance : 0.00363342 ;
+      }
+      pin(rram_addr[6]) {
+        capacitance : 0.00396463 ;
+      }
+      pin(rram_addr[7]) {
+        capacitance : 0.00442092 ;
+      }
+      pin(rram_addr[8]) {
+        capacitance : 0.00331764 ;
+      }
+      pin(rram_addr[9]) {
+        capacitance : 0.0036628299999999997 ;
+      }
+      pin(rram_addr[10]) {
+        capacitance : 0.00404143 ;
+      }
+      pin(rram_addr[11]) {
+        capacitance : 0.0044881899999999995 ;
+      }
+      pin(rram_addr[12]) {
+        capacitance : 0.00331384 ;
+      }
+      pin(rram_addr[13]) {
+        capacitance : 0.00363342 ;
+      }
+      pin(rram_addr[14]) {
+        capacitance : 0.00396463 ;
+      }
+      pin(rram_addr[15]) {
+        capacitance : 0.00442092 ;
+      }
+    }
+    pin(sa_clk) {
+      direction : input ;
+      capacitance : 0.00404143 ;
+    }
+    bus(sa_do) {
+      bus_type : sa_do ;
+      direction : output ;
+      memory_read() { 
+        address : rram_addr ;
+      }
+      timing(){ 
+        timing_sense : non_unate; 
+        related_pin : "sa_clk"; 
+        timing_type : rising_edge; 
+        cell_rise(scalar) {
+          values("4.000");
+        }
+        cell_fall(scalar) {
+          values("4.000");
+        }
+        rise_transition(scalar) {
+          values("0.075");
+        }
+        fall_transition(scalar) {
+          values("0.075");
+        }
+      }
+      pin(sa_do[0]) {
+        capacitance : 0.0037235000000000002 ;
+      }
+      pin(sa_do[1]) {
+        capacitance : 0.00408841 ;
+      }
+      pin(sa_do[2]) {
+        capacitance : 0.00441801 ;
+      }
+      pin(sa_do[3]) {
+        capacitance : 0.0049292 ;
+      }
+      pin(sa_do[4]) {
+        capacitance : 0.00368803 ;
+      }
+      pin(sa_do[5]) {
+        capacitance : 0.00404432 ;
+      }
+      pin(sa_do[6]) {
+        capacitance : 0.0043251999999999995 ;
+      }
+      pin(sa_do[7]) {
+        capacitance : 0.00476708 ;
+      }
+      pin(sa_do[8]) {
+        capacitance : 0.00371938 ;
+      }
+      pin(sa_do[9]) {
+        capacitance : 0.00408596 ;
+      }
+      pin(sa_do[10]) {
+        capacitance : 0.00441184 ;
+      }
+      pin(sa_do[11]) {
+        capacitance : 0.00492473 ;
+      }
+      pin(sa_do[12]) {
+        capacitance : 0.00368803 ;
+      }
+      pin(sa_do[13]) {
+        capacitance : 0.00404432 ;
+      }
+      pin(sa_do[14]) {
+        capacitance : 0.0043251999999999995 ;
+      }
+      pin(sa_do[15]) {
+        capacitance : 0.00476708 ;
+      }
+      pin(sa_do[16]) {
+        capacitance : 0.00371938 ;
+      }
+      pin(sa_do[17]) {
+        capacitance : 0.00408596 ;
+      }
+      pin(sa_do[18]) {
+        capacitance : 0.00441184 ;
+      }
+      pin(sa_do[19]) {
+        capacitance : 0.00492473 ;
+      }
+      pin(sa_do[20]) {
+        capacitance : 0.00368803 ;
+      }
+      pin(sa_do[21]) {
+        capacitance : 0.00404429 ;
+      }
+      pin(sa_do[22]) {
+        capacitance : 0.00432244 ;
+      }
+      pin(sa_do[23]) {
+        capacitance : 0.00476476 ;
+      }
+      pin(sa_do[24]) {
+        capacitance : 0.00371938 ;
+      }
+      pin(sa_do[25]) {
+        capacitance : 0.00408596 ;
+      }
+      pin(sa_do[26]) {
+        capacitance : 0.00441158 ;
+      }
+      pin(sa_do[27]) {
+        capacitance : 0.004922360000000001 ;
+      }
+      pin(sa_do[28]) {
+        capacitance : 0.00368803 ;
+      }
+      pin(sa_do[29]) {
+        capacitance : 0.00404429 ;
+      }
+      pin(sa_do[30]) {
+        capacitance : 0.00432244 ;
+      }
+      pin(sa_do[31]) {
+        capacitance : 0.0047643500000000005 ;
+      }
+      pin(sa_do[32]) {
+        capacitance : 0.00371938 ;
+      }
+      pin(sa_do[33]) {
+        capacitance : 0.00408596 ;
+      }
+      pin(sa_do[34]) {
+        capacitance : 0.00441158 ;
+      }
+      pin(sa_do[35]) {
+        capacitance : 0.004922360000000001 ;
+      }
+      pin(sa_do[36]) {
+        capacitance : 0.00368803 ;
+      }
+      pin(sa_do[37]) {
+        capacitance : 0.00404429 ;
+      }
+      pin(sa_do[38]) {
+        capacitance : 0.00432244 ;
+      }
+      pin(sa_do[39]) {
+        capacitance : 0.0047643500000000005 ;
+      }
+      pin(sa_do[40]) {
+        capacitance : 0.00371938 ;
+      }
+      pin(sa_do[41]) {
+        capacitance : 0.00408596 ;
+      }
+      pin(sa_do[42]) {
+        capacitance : 0.00441158 ;
+      }
+      pin(sa_do[43]) {
+        capacitance : 0.004922360000000001 ;
+      }
+      pin(sa_do[44]) {
+        capacitance : 0.0036907199999999998 ;
+      }
+      pin(sa_do[45]) {
+        capacitance : 0.0040478 ;
+      }
+      pin(sa_do[46]) {
+        capacitance : 0.00432452 ;
+      }
+      pin(sa_do[47]) {
+        capacitance : 0.0047699000000000005 ;
+      }
+    }
+    pin(sa_en) {
+      direction : input ;
+      capacitance : 0.0044881899999999995 ;
+    }
+    pin(sa_rdy) {
+      direction : output ;
+      capacitance : 0.00418331 ;
+      timing(){ 
+        timing_sense : non_unate; 
+        related_pin : "sa_clk"; 
+        timing_type : rising_edge; 
+        cell_rise(scalar) {
+          values("4.000");
+        }
+        cell_fall(scalar) {
+          values("4.000");
+        }
+        rise_transition(scalar) {
+          values("0.075");
+        }
+        fall_transition(scalar) {
+          values("0.075");
+        }
+      }
+    }
+    pin(set_rst) {
+      direction : input ;
+      capacitance : 0.0033128899999999998 ;
+    }
+    pin(sl_en) {
+      direction : input ;
+      capacitance : 0.0044881899999999995 ;
+    }
+    pin(we) {
+      direction : input ;
+      capacitance : 0.0036359499999999998 ;
+    }
+    bus(wl_dac_config) {
+      bus_type : wl_dac_config ;
+      direction : input ;
+      pin(wl_dac_config[0]) {
+        capacitance : 0.00331764 ;
+      }
+      pin(wl_dac_config[1]) {
+        capacitance : 0.0036628299999999997 ;
+      }
+      pin(wl_dac_config[2]) {
+        capacitance : 0.00404143 ;
+      }
+      pin(wl_dac_config[3]) {
+        capacitance : 0.0044881899999999995 ;
+      }
+      pin(wl_dac_config[4]) {
+        capacitance : 0.00331384 ;
+      }
+      pin(wl_dac_config[5]) {
+        capacitance : 0.00363342 ;
+      }
+      pin(wl_dac_config[6]) {
+        capacitance : 0.00396463 ;
+      }
+      pin(wl_dac_config[7]) {
+        capacitance : 0.00442092 ;
+      }
+    }
+    pin(wl_dac_en) {
+      direction : input ;
+      capacitance : 0.00396606 ;
+    }
+    pin(wl_en) {
+      direction : input ;
+      capacitance : 0.004421980000000001 ;
+    }
+  }
+
+  cell(rdac_test_struct) {
+    area : 0 ;
+    dont_use   : true ;
+    map_only   : true ;
+    dont_touch : true ;
+    pg_pin(vdd_test) { 
+      voltage_name : vdd_test ; 
+      pg_type : primary_power ; 
+    }
+    pg_pin(iref_test) { 
+      voltage_name : iref_test ; 
+      pg_type : primary_power ; 
+    }
+    pg_pin(vss) { 
+      voltage_name : vss ; 
+      pg_type : primary_ground ; 
+    }
+    bus(clamp_ref) {
+      bus_type : clamp_ref ;
+      direction : input ;
+      pin(clamp_ref[5]) {
+        capacitance : 0.00363342 ;
+      }
+      pin(clamp_ref[4]) {
+        capacitance : 0.00331384 ;
+      }
+      pin(clamp_ref[3]) {
+        capacitance : 0.00442092 ;
+      }
+      pin(clamp_ref[2]) {
+        capacitance : 0.00396463 ;
+      }
+      pin(clamp_ref[1]) {
+        capacitance : 0.00363342 ;
+      }
+      pin(clamp_ref[0]) {
+        capacitance : 0.00331384 ;
+      }
+    }
+    pin(sa_en) {
+      direction : input ;
+      capacitance : 0.001 ;
+    }
+  }
+}
