@@ -125,6 +125,15 @@ module fsm (
   reg [`FSM_DIAG_COUNT_BITS_N-1:0] failure_counter;
   reg failure_counter_incr_en;
   reg failure_counter_rst;
+  reg [`FSM_DIAG_COUNT_BITS_N-1:0] set_counter;
+  reg set_counter_incr_en;
+  reg set_counter_rst;
+  reg [`FSM_DIAG_COUNT_BITS_N-1:0] reset_counter;
+  reg reset_counter_incr_en;
+  reg reset_counter_rst;
+  reg [`FSM_DIAG_COUNT_BITS_N-1:0] read_counter;
+  reg read_counter_incr_en;
+  reg read_counter_rst;
   reg [`MAX_ATTEMPTS_BITS_N-1:0] attempts_counter;
   reg attempts_counter_incr_en;
   reg attempts_counter_rst;
@@ -163,6 +172,9 @@ module fsm (
       attempts_counter <= 0;
       success_counter <= 0;
       failure_counter <= 0;
+      set_counter <= 0;
+      reset_counter <= 0;
+      read_counter <= 0;
       is_first_try <= 0;
       rangei <= 0;
       mask <= 0;
@@ -208,6 +220,24 @@ module fsm (
       else if (failure_counter_incr_en)
         failure_counter <= failure_counter + 1;
 
+      // Update SET counter
+      if (set_counter_rst)
+        set_counter <= 0;
+      else if (set_counter_incr_en)
+        set_counter <= set_counter + 1;
+
+      // Update RESET counter
+      if (reset_counter_rst)
+        reset_counter <= 0;
+      else if (reset_counter_incr_en)
+        reset_counter <= reset_counter + 1;
+
+      // Update READ counter
+      if (read_counter_rst)
+        read_counter <= 0;
+      else if (read_counter_incr_en)
+        read_counter <= read_counter + 1;
+
       // Update attempts counter
       if (attempts_counter_rst)
         attempts_counter <= 0;
@@ -229,6 +259,9 @@ module fsm (
     attempts_counter_incr_en = 0; attempts_counter_rst = 0;                       // Attempts counter
     success_counter_incr_en = 0; success_counter_rst = 0;                         // Success counter
     failure_counter_incr_en = 0; failure_counter_rst = 0;                         // Failure counter
+    set_counter_incr_en = 0; set_counter_rst = 0;                                 // SET counter
+    reset_counter_incr_en = 0; reset_counter_rst = 0;                             // RESET counter
+    read_counter_incr_en = 0; read_counter_rst = 0;                               // READ counter
     next_is_first_try = is_first_try;                                             // Is first try
     next_rram_addr = rram_addr;                                                   // RRAM address
     next_rangei = rangei;                                                         // Range index
@@ -332,7 +365,7 @@ module fsm (
         sa_en = 1;                                                                // Enable read
         if (sa_rdy & (counter < post_read_setup_cycles)) begin                    // Wait for post read cycle after SA ready
           counter_incr_en = 1;                                                    // Increment counter
-          next_read_data_bits[0] = sa_do; 
+          next_read_data_bits[0] = sa_do;
         end
         if (counter == post_read_setup_cycles) begin                              // Add extra cycle for disabling
           sa_en = 0;                                                              // Disable SA
@@ -569,6 +602,9 @@ module fsm (
         if (opcode != `OP_REFRESH) begin
           success_counter_rst = 1;
           failure_counter_rst = 1;
+          set_counter_rst = 1;
+          reset_counter_rst = 1;
+          read_counter_rst = 1;
         end
       end
       
@@ -586,6 +622,7 @@ module fsm (
           end                                                                     
           else begin
             counter_rst = 1;                                                      // Reset the counter
+            read_counter_incr_en = 1;                                             // Increment READ counter
             next_state = `FSM_STATE_PREPULSE_WRITE;                               // Go to step read to go to next level/address
             next_mask = mask & (set_rst_loop ? ~sa_do : sa_do);                   // Update mask based on bits to be written
             if (next_mask == 0) begin                                             // If next mask is 0, then skip write pulse
@@ -626,6 +663,8 @@ module fsm (
           counter_incr_en = 1;
         else begin
           aclk = 0; we = 0;                                                       // Disable pulse
+          set_counter_incr_en = set_rst_loop;                                     // Increment SET counter (if appropriate)
+          reset_counter_incr_en = ~set_rst_loop;                                  // Increment RESET counter (if appropriate)
           counter_rst = 1;                                                        // Reset counter
           next_state = `FSM_STATE_STEP_WRITE;                                     // Step the write parameters
         end
@@ -837,5 +876,5 @@ module fsm (
   assign fsm_bits = {next_rangei, next_is_first_try, attempts_counter_rst, attempts_counter_incr_en, counter_rst, counter_incr_en, is_first_try, attempts_counter, counter, pw, rangei, wl_en, wl_dac_en, wl_dac_config, we, sl_en, set_rst, sa_en, sa_clk, rram_addr, read_ref, read_dac_en, read_dac_config, di, clamp_ref, bsl_dac_en, bsl_dac_config, bleed_en, bl_en, aclk, next_state, state};
 
   // FSM diagnostic bits
-  assign diag_bits = {failure_counter, success_counter};
+  assign diag_bits = {reset_counter, set_counter, read_counter, failure_counter, success_counter};
 endmodule
