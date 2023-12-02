@@ -141,7 +141,7 @@ module rram_1p3Mb (
   // Parameters
   parameter DEFAULT_LEVEL = 0;
   parameter USE_RANDOM = 1;
-  parameter CHANGE_PROB = 1.0; // probability that a write pulse will affect the conductance
+  parameter CHANGE_PROB = 0.5; // probability that a write pulse will affect the conductance
 
   // Values for SET and RST
   localparam RST = 0;
@@ -178,8 +178,8 @@ module rram_1p3Mb (
       sa_rdy = 1;
       for (i = 0; i < `WORD_SIZE; i=i+1) begin
         sa_do[i] = mask[i] ? (g[rram_addr][i] >= read_ref) : 'x;
+        // if (mask[i]) $display("[RRAM Behav.] READ detected: T=%0t addr=%0d i=%0d ref=%0d g=%0d val=%0d", $time, rram_addr, i, read_ref, g[rram_addr][i], sa_do[i]);
       end
-      // $display("[RRAM Behav.] READ detected: T=%0t addr=%0d i=%0d ref=%0d val=%0d", $time, rram_addr, i, read_ref, sa_do[i]);
     end
     // Data becomes invalid when sa_en low
     if (~sa_en) begin
@@ -201,13 +201,13 @@ module rram_1p3Mb (
             SET: begin
               g0 = g[rram_addr][i];
               g[rram_addr][i] = $urandom_range(32'(g[rram_addr][i]), 32'({`ADC_BITS_N{1'b1}}));
-              $display("[RRAM Behav.] SET detected: T=%0t addr=%0d i=%0d wl=%0d bsl=%0d g0=%0d gf=%0d", $time, rram_addr, i, wl_dac_config, bsl_dac_config, g0, g[rram_addr][i]);
+              // $display("[RRAM Behav.] SET detected: T=%0t addr=%0d i=%0d wl=%0d bsl=%0d g0=%0d gf=%0d", $time, rram_addr, i, wl_dac_config, bsl_dac_config, g0, g[rram_addr][i]);
             end
             // RST results in <= conductance, ignores pulse settings for now
             RST: begin
               g0 = g[rram_addr][i];
               g[rram_addr][i] = $urandom_range(32'd0, 32'(g[rram_addr][i]));
-              $display("[RRAM Behav.] RST detected: T=%0t addr=%0d i=%0d wl=%0d bsl=%0d g0=%0d gf=%0d", $time, rram_addr, i, wl_dac_config, bsl_dac_config, g0, g[rram_addr][i]);
+              // $display("[RRAM Behav.] RST detected: T=%0t addr=%0d i=%0d wl=%0d bsl=%0d g0=%0d gf=%0d", $time, rram_addr, i, wl_dac_config, bsl_dac_config, g0, g[rram_addr][i]);
             end
         endcase
       end

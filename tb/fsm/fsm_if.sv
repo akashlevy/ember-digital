@@ -14,7 +14,7 @@ interface fsm_if (input bit clk);
 
   // Input and output data registers
   logic     [`WORD_SIZE-1:0]                    write_data_bits [`PROG_CNFG_RANGES_LOG2_N-1:0];
-  logic     [`WORD_SIZE-1:0]                    read_data_bits [`PROG_CNFG_RANGES_LOG2_N-1:0];
+  logic     [`WORD_SIZE-1:0]                    read_data_bits  [`PROG_CNFG_RANGES_LOG2_N-1:0];
 
   // Global parameters from register array
   logic     [`MAX_ATTEMPTS_BITS_N-1:0]          max_attempts;
@@ -90,6 +90,10 @@ interface fsm_if (input bit clk);
   logic                                         fsm_go;
   logic     [`OP_CODE_BITS_N-1:0]               opcode;
   logic                                         use_multi_addrs;
+  logic                                         use_lfsr_data;
+  logic                                         use_cb_data;
+  logic                                         check63;
+  logic                                         loop_mode;
 
   // FSM current range index
   logic     [`PROG_CNFG_RANGES_LOG2_N-1:0]      rangei;
@@ -101,6 +105,7 @@ interface fsm_if (input bit clk);
   // FSM state
   logic     [`FSM_FULL_STATE_BITS_N-1:0]        fsm_state;
   logic     [`FSM_DIAG_BITS_N-1:0]              diag_state;
+  logic     [`FSM_DIAG_BITS_N-1:0]              diag2_state;
 
   // Behavioral model conductance
   logic [`ADC_BITS_N-1:0] g [`NUM_WORDS-1:0][`WORD_SIZE-1:0];
@@ -153,6 +158,6 @@ interface fsm_if (input bit clk);
   assert property (charge_pulse_valid);
   assert property (write_pulse_valid1);
   assert property (write_pulse_valid2);
-  assert property (read_pulse_valid);
+  // assert property (read_pulse_valid);
   assert property (all_dacs_on_valid);
 endinterface

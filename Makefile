@@ -19,7 +19,7 @@ SRC_ECC = ./opencores/bch_dec_enc_dcd/rtl/univ
 # Source files
 INC_FILE                =       $(SRC)/$(TOP).f
 TB_INC_FILE             =       $(SRC_TB)/$(TOP)/$(TOP_TB).f
-SRC_FILES_VERILOG       =       $(SRC)/$(TOP).v
+SRC_FILES_VERILOG       =       $(SRC)/$(TOP)*.v
 SRC_FILES_VERILOG_TB    =       $(SRC_TB)/$(TOP)/*.sv
 
 # Compilers
@@ -35,7 +35,7 @@ OPT             = -sv -access +rwc -timescale 1ns/1ps -64bit -seed random -disab
 ifeq ($(TOP),bch_dec)
 	INC_FILE                =       $(SRC_TB)/$(TOP)/$(TOP).f
 	SRC_FILES_VERILOG       =       $(SRC_ECC)/$(TOP)*.v
-endif 
+endif
 
 # Ignore output disconnections for spi_slave_rram
 ifeq ($(TOP),spi_slave_rram)
@@ -65,4 +65,4 @@ saif : sim
 	vcd2saif -input dump.vcd -output saif/run.saif -instance rram_top_tb/dut
 
 clean :
-	rm -rf *log *.history xrun.key *.err xcelium.d waves.shm *.diag *.vcd *.vpd DVEfiles/ novas.* verdiLog/ dump.* .bpad/ tb/fsm/fsm_tb_combined.sv cds.lib ember_sv_tb/ .cadence/
+	rm -rf *log *.history outfile xrun.key *.err xcelium.d waves.shm *.diag *.vcd *.vpd DVEfiles/ novas.* verdiLog/ dump.* .bpad/ tb/fsm/fsm_tb_combined.sv cds.lib ember_sv_tb/ .cadence/ lfsr_tb_vecgen_*.txt

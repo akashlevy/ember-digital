@@ -57,6 +57,10 @@ class fsm_driver;
       vif.post_read_setup_cycles = item.post_read_setup_cycles;
       vif.opcode = item.opcode;
       vif.use_multi_addrs = item.use_multi_addrs;
+      vif.use_lfsr_data = item.use_lfsr_data;
+      vif.use_cb_data = item.use_cb_data;
+      vif.check63 = item.check63;
+      vif.loop_mode = item.loop_mode;
       
       vif.write_data_bits = item.write_data_bits;
 

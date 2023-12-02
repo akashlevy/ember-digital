@@ -39,6 +39,7 @@ class spi_slave_rram_driver;
       // Apply FSM signals
       vif.fsm_bits = item.fsmdata;
       vif.diag_bits = item.diagdata;
+      vif.diag2_bits = item.diag2data;
       vif.readdata = item.readdata;
 
       // Reset

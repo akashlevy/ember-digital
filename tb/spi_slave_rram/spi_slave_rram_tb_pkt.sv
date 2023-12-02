@@ -9,6 +9,7 @@ class spi_slave_rram_tb_pkt;
   bit                                       fsm_go;     // FSM trigger
   rand bit  [`FSM_FULL_STATE_BITS_N-1:0]    fsmdata;    // FSM state data
   rand bit  [`FSM_DIAG_BITS_N-1:0]          diagdata;   // FSM diagnostic data
+  rand bit  [`FSM_DIAG_BITS_N-1:0]          diag2data;  // FSM diagnostic data
   rand bit                                  wr;         // Do read if 0, write if 1
   rand bit  [`WORD_SIZE-1:0] readdata [`PROG_CNFG_RANGES_LOG2_N-1:0]; // Read data
   

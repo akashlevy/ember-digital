@@ -13,6 +13,7 @@ interface spi_slave_rram_if (input bit sclk);
   // FSM bits
   logic     [`FSM_FULL_STATE_BITS_N-1:0]    fsm_bits;   // State of all regs in FSM
   logic     [`FSM_DIAG_BITS_N-1:0]          diag_bits;  // Diagnostic state in FSM
+  logic     [`FSM_DIAG_BITS_N-1:0]          diag2_bits; // More diagnostic state in FSM
   logic     [`WORD_SIZE-1:0] readdata [`PROG_CNFG_RANGES_LOG2_N-1:0]; // Read data
   logic                                     rram_busy;  // Is FSM active
 
@@ -22,6 +23,7 @@ interface spi_slave_rram_if (input bit sclk);
   bit       [`PROG_CNFG_BITS_N-1:0]         rdata;      // Register file read data
   bit       [`FSM_FULL_STATE_BITS_N-1:0]    fsmdata;    // FSM state data
   bit       [`FSM_FULL_STATE_BITS_N-1:0]    diagdata;   // FSM state data
+  bit       [`FSM_FULL_STATE_BITS_N-1:0]    diag2data;  // FSM state data
   bit                                       fsm_go;     // FSM trigger
   bit                                       wr;         // Do read if 0, write if 1
 endinterface

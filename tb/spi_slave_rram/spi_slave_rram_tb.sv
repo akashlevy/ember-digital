@@ -24,6 +24,7 @@ module spi_slave_rram_tb;
 
     .fsm_bits(vif.fsm_bits),        // (I) FSM state bits
     .diag_bits(vif.diag_bits),      // (I) FSM diagnostic bits
+    .diag2_bits(vif.diag2_bits),    // (I) FSM diagnostic 2 bits
     .read_data_bits(vif.readdata),  // (I) Read data bits
 
     .rangei()

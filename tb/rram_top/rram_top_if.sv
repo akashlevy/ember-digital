@@ -4,10 +4,10 @@ interface rram_top_if (input bit sclk);
   // Clock enable
   logic       mclk_pause;
 
-  // // Reset
+  // Reset
   logic       rst_n;      // (I) Chip reset, active LO
 
-  // // SPI interface
+  // SPI interface
   logic       sc;         // (I) SPI chip select (and async reset when sc = '0')
   logic       mosi;       // (I) SPI master out, slave in
   logic       miso;       // (O) SPI master in, slave out data

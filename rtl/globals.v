@@ -14,6 +14,7 @@
 `define LOOP_BITS_N 3
 // Number of bits to represent maximum number of programming attempts (up to 255)
 `define MAX_ATTEMPTS_BITS_N 8
+`define MAX_ATTEMPTS_FULL_BITS_N 14
 
 // Maximum number of programming ranges
 `define PROG_CNFG_RANGES_N 16
@@ -55,10 +56,10 @@
 // Number of bits for FSM stuff
 `define FSM_STATE_BITS_N 5
 `define OP_CODE_BITS_N 3
-`define FSM_CMD_BITS_N (`OP_CODE_BITS_N + 1)
+`define FSM_CMD_BITS_N (`OP_CODE_BITS_N + 5)
 `define FSM_FULL_STATE_BITS_N (2*`FSM_STATE_BITS_N + 3 + `BSL_DAC_BITS_N + 1 + `ADC_BITS_N + `WORD_SIZE + `READ_DAC_BITS_N + 1 + `ADC_BITS_N + `ADDR_BITS_N + 5 + `WL_DAC_BITS_N + 2 + `PROG_CNFG_RANGES_LOG2_N + `PW_BITS_N + `PW_FULL_BITS_N + `MAX_ATTEMPTS_BITS_N + 6 + `PROG_CNFG_RANGES_LOG2_N)
-`define FSM_DIAG_COUNT_BITS_N 16
-`define FSM_DIAG_BITS_N (2*`FSM_DIAG_COUNT_BITS_N)
+`define FSM_DIAG_COUNT_BITS_N 32
+`define FSM_DIAG_BITS_N (5*`FSM_DIAG_COUNT_BITS_N)
 
 // SET/RST
 `define RST 0
@@ -89,7 +90,11 @@
 `define FSM_STATE_READ_WRITE 15
 `define FSM_STATE_PREPULSE_WRITE 16
 `define FSM_STATE_PULSE_WRITE 17
-`define FSM_STATE_STEP_WRITE 18
+`define FSM_STATE_PRESTEP_WRITE 18
+`define FSM_STATE_STEP_WRITE 19
+
+`define FSM_STATE_READ_ENERGY_INIT 20
+`define FSM_STATE_READ_ENERGY_GO 21
 
 // FSM opcodes
 `define OP_TEST_PULSE 0
@@ -99,6 +104,7 @@
 `define OP_READ 4
 `define OP_WRITE 5
 `define OP_REFRESH 6
+`define OP_READ_ENERGY 7
 
 // Loop orders
 `define LOOP_PWB 0
@@ -114,6 +120,6 @@
 `define DEBUG_DAC_LVLS 0
 `define DEBUG_PULSES 1
 
-// Macros to convert pulse width floating point to int and compute max of two values
-`define pw_defloat(pw_float) (`PW_FULL_BITS_N'(`PW_FULL_BITS_N'(pw_float[4:0]) << pw_float[7:5]))
+// Macros to convert 8-bit floating point to int and compute max of two values
+`define defloat(float) (float[4:0] << float[7:5])
 `define max_fn(a, b) ((a > b) ? a : b)
