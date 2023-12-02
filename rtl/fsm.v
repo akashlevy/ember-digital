@@ -14,7 +14,7 @@ module fsm (
   // Data to/from register array
   // NOTE: these 2-D array constructs are only supported by SystemVerilog, WONTFIX: could be flattened/unflattened
   input wire    [`WORD_SIZE-1:0]                    write_data_bits [`PROG_CNFG_RANGES_LOG2_N-1:0],
-  output reg    [`WORD_SIZE-1:0]                    read_data_bits [`PROG_CNFG_RANGES_LOG2_N-1:0],
+  output reg    [`WORD_SIZE-1:0]                    read_data_bits  [`PROG_CNFG_RANGES_LOG2_N-1:0],
 
   // Global parameters from register array
   input wire    [`MAX_ATTEMPTS_BITS_N-1:0]          max_attempts,
@@ -69,11 +69,16 @@ module fsm (
   input wire                                      fsm_go,
   input wire    [`OP_CODE_BITS_N-1:0]             opcode,
   input wire                                      use_multi_addrs,
+  input wire                                      use_lfsr_data,
+  input wire                                      use_cb_data,
+  input wire                                      check63,
+  input wire                                      loop_mode,
 
   // FSM to register array
   output reg    [`PROG_CNFG_RANGES_LOG2_N-1:0]    rangei,     // for indexing which programming settings to use from FSM
-  output        [`FSM_FULL_STATE_BITS_N-1:0]      fsm_bits,   // state of all regs in FSM
-  output        [`FSM_DIAG_BITS_N-1:0]            diag_bits,  // diagnostic bits in FSM
+  output wire   [`FSM_FULL_STATE_BITS_N-1:0]      fsm_bits,   // state of all regs in FSM
+  output wire   [`FSM_DIAG_BITS_N-1:0]            diag_bits,  // diagnostic bits in FSM
+  output wire   [`FSM_DIAG_BITS_N-1:0]            diag2_bits, // more diagnostic bits in FSM
 
   // FSM input from analog block
   input wire [`WORD_SIZE-1:0] sa_do,
@@ -101,10 +106,6 @@ module fsm (
   output reg wl_en
   );
 
-  // Muxed write data bits (uses read data bits if REFRESH mode)
-  wire [`WORD_SIZE-1:0] write_data [`PROG_CNFG_RANGES_LOG2_N-1:0];
-  assign write_data = (opcode == `OP_REFRESH) ? read_data_bits : write_data_bits;
-
   // Address
   reg [`ADDR_BITS_N-1:0] next_rram_addr;
 
@@ -119,22 +120,30 @@ module fsm (
   reg [`PW_FULL_BITS_N-1:0] counter;
   reg counter_incr_en;
   reg counter_rst;
+  reg [`FSM_DIAG_COUNT_BITS_N*2-1:0] cycle_counter;
+  reg cycle_counter_incr_en;
+  reg cycle_counter_rst;
   reg [`FSM_DIAG_COUNT_BITS_N-1:0] success_counter;
   reg success_counter_incr_en;
   reg success_counter_rst;
   reg [`FSM_DIAG_COUNT_BITS_N-1:0] failure_counter;
-  reg failure_counter_incr_en;
-  reg failure_counter_rst;
+  reg [`FSM_DIAG_COUNT_BITS_N-1:0] next_failure_counter;
   reg [`FSM_DIAG_COUNT_BITS_N-1:0] set_counter;
+  reg [`FSM_DIAG_COUNT_BITS_N-1:0] set_bits_counter;
+  reg [`FSM_DIAG_COUNT_BITS_N-1:0] next_set_bits_counter;
   reg set_counter_incr_en;
   reg set_counter_rst;
   reg [`FSM_DIAG_COUNT_BITS_N-1:0] reset_counter;
+  reg [`FSM_DIAG_COUNT_BITS_N-1:0] reset_bits_counter;
+  reg [`FSM_DIAG_COUNT_BITS_N-1:0] next_reset_bits_counter;
   reg reset_counter_incr_en;
   reg reset_counter_rst;
   reg [`FSM_DIAG_COUNT_BITS_N-1:0] read_counter;
+  reg [`FSM_DIAG_COUNT_BITS_N-1:0] read_bits_counter;
+  reg [`FSM_DIAG_COUNT_BITS_N-1:0] next_read_bits_counter;
   reg read_counter_incr_en;
   reg read_counter_rst;
-  reg [`MAX_ATTEMPTS_BITS_N-1:0] attempts_counter;
+  reg [`MAX_ATTEMPTS_FULL_BITS_N-1:0] attempts_counter;
   reg attempts_counter_incr_en;
   reg attempts_counter_rst;
   reg is_first_try;
@@ -158,8 +167,50 @@ module fsm (
   // Read data bits
   reg [`WORD_SIZE-1:0] next_read_data_bits [`PROG_CNFG_RANGES_LOG2_N-1:0];
 
+  // Half clock
+  reg halfclk;
+
   // SA clock connected to master clock
   assign sa_clk = mclk;
+
+  // LFSR PRBS generators for random data
+  reg lfsr_en;
+  localparam [`WORD_SIZE-1:0] lfsr_init [`PROG_CNFG_RANGES_LOG2_N-1:0] = {
+    48'b101110001000100011101000010011101110001011110100,
+    48'b100101111001111011100010000110100111000011110001,
+    48'b010100011000000110001001000111010011101011101011,
+    48'b110101110001111100110100000111000100110010011101
+  };
+  wire [`WORD_SIZE-1:0] lfsr_data_bits      [`PROG_CNFG_RANGES_LOG2_N-1:0];
+  wire [`WORD_SIZE-1:0] lfsr_data_bits_raw  [`PROG_CNFG_RANGES_LOG2_N-1:0];
+  generate
+    genvar k;
+    for (k = 0; k < `PROG_CNFG_RANGES_LOG2_N; k = k+1) begin : lfsr_gen
+      lfsr_prbs_gen #(.LFSR_INIT(lfsr_init[k])) lfsr_prbs_gen (
+        .clk(mclk),
+        .rst(!state),
+        .enable(lfsr_en),
+        .data_out(lfsr_data_bits_raw[k])
+      );
+    end
+  endgenerate
+  assign lfsr_data_bits[0] = lfsr_data_bits_raw[0];
+  assign lfsr_data_bits[1] = ((num_levels > 4'd2) || (num_levels == 0)) ? lfsr_data_bits_raw[1] : 0;
+  assign lfsr_data_bits[2] = ((num_levels > 4'd4) || (num_levels == 0)) ? lfsr_data_bits_raw[2] : 0;
+  assign lfsr_data_bits[3] = (num_levels == 0) ? lfsr_data_bits_raw[3] : 0;
+
+  // CB generator for checkerboard data
+  wire [`WORD_SIZE-1:0] cb_data_bits [`PROG_CNFG_RANGES_LOG2_N-1:0];
+  cb cb_gen (
+    .clk(mclk),
+    .rst(!state),
+    .enable(lfsr_en),
+    .num_levels(num_levels),
+    .data_out(cb_data_bits)
+  );
+
+  // Muxed write data bits (uses read data bits if REFRESH mode, use LFSR data if LFSR mode, else use write data registers)
+  wire [`WORD_SIZE-1:0] write_data [`PROG_CNFG_RANGES_LOG2_N-1:0] = use_cb_data ? cb_data_bits : use_lfsr_data ? lfsr_data_bits : (opcode == `OP_REFRESH) ? read_data_bits : write_data_bits;
 
   // Update state and registers
   integer i, j; // WONTFIX: could make these genvars
@@ -169,12 +220,16 @@ module fsm (
       rram_addr <= 0;
       state <= `FSM_STATE_IDLE;
       counter <= 0;
+      cycle_counter <= 0;
       attempts_counter <= 0;
       success_counter <= 0;
       failure_counter <= 0;
       set_counter <= 0;
       reset_counter <= 0;
       read_counter <= 0;
+      set_bits_counter <= 0;
+      reset_bits_counter <= 0;
+      read_bits_counter <= 0;
       is_first_try <= 0;
       rangei <= 0;
       mask <= 0;
@@ -182,6 +237,7 @@ module fsm (
       wl_loop <= 0;
       bsl_loop <= 0;
       set_rst_loop <= 0;
+      halfclk <= 0;
 
       // Reset read data bits to 0
       for (i = 0; i < `PROG_CNFG_RANGES_LOG2_N; i=i+1) begin
@@ -201,6 +257,10 @@ module fsm (
       wl_loop <= next_wl_loop;
       bsl_loop <= next_bsl_loop;
       set_rst_loop <= next_set_rst_loop;
+      set_bits_counter <= next_set_bits_counter;
+      reset_bits_counter <= next_reset_bits_counter;
+      read_bits_counter <= next_read_bits_counter;
+      failure_counter <= next_failure_counter;
 
       // Update counter
       if (counter_rst)
@@ -208,17 +268,17 @@ module fsm (
       else if (counter_incr_en)
         counter <= counter + 1;
 
+      // Update cycle counter
+      if (cycle_counter_rst)
+        cycle_counter <= 0;
+      else if (cycle_counter_incr_en)
+        cycle_counter <= cycle_counter + 1;
+
       // Update success counter
       if (success_counter_rst)
         success_counter <= 0;
       else if (success_counter_incr_en)
         success_counter <= success_counter + 1;
-
-      // Update failure counter
-      if (failure_counter_rst)
-        failure_counter <= 0;
-      else if (failure_counter_incr_en)
-        failure_counter <= failure_counter + 1;
 
       // Update SET counter
       if (set_counter_rst)
@@ -243,6 +303,9 @@ module fsm (
         attempts_counter <= 0;
       else if (attempts_counter_incr_en)
         attempts_counter <= attempts_counter + 1;
+
+      // Update halfclk
+      halfclk <= ~halfclk;
     end
   end
 
@@ -256,12 +319,17 @@ module fsm (
     bsl_dac_config = 0; wl_dac_config = 0;                                        // Write DAC levels
     clamp_ref = 0; read_dac_config = 0; read_ref = 0;                             // Read DAC levels
     counter_incr_en = 0; counter_rst = 0;                                         // Counter
+    cycle_counter_incr_en = 1; cycle_counter_rst = 0;                             // Cycle counter (increment by default)
     attempts_counter_incr_en = 0; attempts_counter_rst = 0;                       // Attempts counter
     success_counter_incr_en = 0; success_counter_rst = 0;                         // Success counter
-    failure_counter_incr_en = 0; failure_counter_rst = 0;                         // Failure counter
     set_counter_incr_en = 0; set_counter_rst = 0;                                 // SET counter
     reset_counter_incr_en = 0; reset_counter_rst = 0;                             // RESET counter
     read_counter_incr_en = 0; read_counter_rst = 0;                               // READ counter
+    lfsr_en = 0;                                                                  // LFSR next output enable
+    next_failure_counter = failure_counter;                                       // Next failure counter
+    next_set_bits_counter = set_bits_counter;                                     // SET bits counter
+    next_reset_bits_counter = reset_bits_counter;                                 // RESET bits counter
+    next_read_bits_counter = read_bits_counter;                                   // READ bits counter
     next_is_first_try = is_first_try;                                             // Is first try
     next_rram_addr = rram_addr;                                                   // RRAM address
     next_rangei = rangei;                                                         // Range index
@@ -278,6 +346,7 @@ module fsm (
       // IDLE, everything off
       `FSM_STATE_IDLE: begin
         counter_rst = 1; attempts_counter_rst = 1; next_is_first_try = 1;         // Reset all counters
+        cycle_counter_incr_en = 0;                                                // Do not update cycle counter in IDLE state
         next_rram_addr = address_start;                                           // Start from first address
         next_rangei = 0;                                                          // Start from 0 index
         next_mask = di_init_mask;                                                 // SET/RST mask
@@ -298,9 +367,87 @@ module fsm (
               next_state = `FSM_STATE_INIT_WRITE;
             `OP_REFRESH:
               next_state = `FSM_STATE_INIT_READ;
+            `OP_READ_ENERGY:
+              next_state = `FSM_STATE_READ_ENERGY_INIT;
             default:
               next_state = `FSM_STATE_IDLE;
           endcase
+        end
+      end
+
+      // Start read energy measurement
+      `FSM_STATE_READ_ENERGY_INIT: begin
+        // NOTE: num_levels is actually number of bits per cell in this command
+        next_state = `FSM_STATE_READ_ENERGY_GO;
+        next_rram_addr = address_start;
+        next_mask = 48'b111111111111111111111111111111111111111111111111;
+        set_rst = 1;
+        next_rangei = 0;
+        read_ref = 64 >> num_levels;
+      end
+
+      // Perform read energy measurement
+      `FSM_STATE_READ_ENERGY_GO: begin
+        // Update on every second clock cycle (while latching is happening)
+        set_rst = 1;
+        read_ref = (64 >> num_levels) * (rangei + 1);                             // Read level
+        if (halfclk) begin
+          next_rangei = rangei + 1;                                               // Increment range index
+        
+          // Update mask
+          case (num_levels)
+            default:      next_mask = 48'b111111111111111111111111111111111111111111111111;
+            2: begin
+              case (next_rangei)
+                default:  next_mask = 52'b1111111111111111111111111111111111111111111111111111 << rram_addr[1:0] >> 4;
+                1:        next_mask = 52'b0111011101110111011101110111011101110111011101110111 << rram_addr[1:0] >> 4;
+                2:        next_mask = 52'b0011001100110011001100110011001100110011001100110011 << rram_addr[1:0] >> 4;
+                3:        next_mask = 52'b0001000100010001000100010001000100010001000100010001 << rram_addr[1:0] >> 4;
+              endcase
+            end
+            3: begin
+              case (next_rangei)
+                default:  next_mask = 56'b11111111111111111111111111111111111111111111111111111111 << rram_addr[2:0] >> 8;
+                1:        next_mask = 56'b01111111011111110111111101111111011111110111111101111111 << rram_addr[2:0] >> 8;
+                2:        next_mask = 56'b00111111001111110011111100111111001111110011111100111111 << rram_addr[2:0] >> 8;
+                3:        next_mask = 56'b00011111000111110001111100011111000111110001111100011111 << rram_addr[2:0] >> 8;
+                4:        next_mask = 56'b00001111000011110000111100001111000011110000111100001111 << rram_addr[2:0] >> 8;
+                5:        next_mask = 56'b00000111000001110000011100000111000001110000011100000111 << rram_addr[2:0] >> 8;
+                6:        next_mask = 56'b00000011000000110000001100000011000000110000001100000011 << rram_addr[2:0] >> 8;
+                7:        next_mask = 56'b00000001000000010000000100000001000000010000000100000001 << rram_addr[2:0] >> 8;
+              endcase
+            end
+            4: begin
+              case (next_rangei)
+                default:  next_mask = 64'b1111111111111111111111111111111111111111111111111111111111111111 << rram_addr[3:0] >> 16;
+                1:        next_mask = 64'b0111111111111111011111111111111101111111111111110111111111111111 << rram_addr[3:0] >> 16;
+                2:        next_mask = 64'b0011111111111111001111111111111100111111111111110011111111111111 << rram_addr[3:0] >> 16;
+                3:        next_mask = 64'b0001111111111111000111111111111100011111111111110001111111111111 << rram_addr[3:0] >> 16;
+                4:        next_mask = 64'b0000111111111111000011111111111100001111111111110000111111111111 << rram_addr[3:0] >> 16;
+                5:        next_mask = 64'b0000011111111111000001111111111100000111111111110000011111111111 << rram_addr[3:0] >> 16;
+                6:        next_mask = 64'b0000001111111111000000111111111100000011111111110000001111111111 << rram_addr[3:0] >> 16;
+                7:        next_mask = 64'b0000000111111111000000011111111100000001111111110000000111111111 << rram_addr[3:0] >> 16;
+                8:        next_mask = 64'b0000000011111111000000001111111100000000111111110000000011111111 << rram_addr[3:0] >> 16;
+                9:        next_mask = 64'b0000000001111111000000000111111100000000011111110000000001111111 << rram_addr[3:0] >> 16;
+                10:       next_mask = 64'b0000000000111111000000000011111100000000001111110000000000111111 << rram_addr[3:0] >> 16;
+                11:       next_mask = 64'b0000000000011111000000000001111100000000000111110000000000011111 << rram_addr[3:0] >> 16;
+                12:       next_mask = 64'b0000000000001111000000000000111100000000000011110000000000001111 << rram_addr[3:0] >> 16;
+                13:       next_mask = 64'b0000000000000111000000000000011100000000000001110000000000000111 << rram_addr[3:0] >> 16;
+                14:       next_mask = 64'b0000000000000011000000000000001100000000000000110000000000000011 << rram_addr[3:0] >> 16;
+                15:       next_mask = 64'b0000000000000001000000000000000100000000000000010000000000000001 << rram_addr[3:0] >> 16;
+                endcase
+            end
+          endcase
+
+          // Update address
+          if ((next_rangei + 1) >= (1 << num_levels)) begin                       // When on second last level, stop (no READ required)
+            next_mask = 48'b111111111111111111111111111111111111111111111111;     // Reset mask
+            next_rram_addr = rram_addr + address_step;                            // New RRAM address
+            next_rangei = 0;                                                      // Reset rangei
+            if (next_rram_addr >= address_stop) begin                             // If finished with all addresses
+              next_rram_addr = address_start;                                     // Return to initial address
+            end
+          end
         end
       end
 
@@ -329,12 +476,21 @@ module fsm (
         wl_dac_config = set_first ? wl_dac_set_lvl_cycle : wl_dac_rst_lvl_cycle;  // Write DAC levels
         next_mask = di_init_mask;                                                 // SET/RST mask
         aclk = 1; we = 1;                                                         // Enable pulse
-        if (counter < `pw_defloat(pw))                                            // Counter for pulse width (convert from float repr.)
+        if (counter < `defloat(pw))                                               // Counter for pulse width (convert from float repr.)
           counter_incr_en = 1;
         else begin
           aclk = 0; we = 0;                                                       // Disable pulse
           counter_rst = 1;                                                        // Reset counter
-          next_state = `FSM_STATE_IDLE;                                           // Return to IDLE
+          if (use_multi_addrs) begin                                              // If in multiple address mode
+            next_rram_addr = rram_addr + address_step;                            // New RRAM address
+            if (next_rram_addr >= address_stop) begin                             // If finished with all addresses
+              next_state = `FSM_STATE_IDLE;                                       // Return to IDLE
+            end
+          end
+          else begin
+            aclk = 0; we = 0;                                                     // Disable pulse
+            next_state = `FSM_STATE_IDLE;                                         // Return to IDLE
+          end
         end
       end
 
@@ -346,6 +502,8 @@ module fsm (
         clamp_ref = adc_clamp_ref_lvl; read_dac_config = adc_read_dac_lvl;        // Read DAC levels
         read_ref = adc_upper_read_ref_lvl;                                        // Read level
         set_rst = 1; next_mask = di_init_mask;                                    // DI mask
+        if (counter == 0)
+          cycle_counter_rst = 1;                                                  // Reset cycle count
         if (counter < idle_to_init_read_setup_cycles)                             // Counter for read setup time (in fixed-pt. repr.)
           counter_incr_en = 1;
         else begin
@@ -365,7 +523,7 @@ module fsm (
         sa_en = 1;                                                                // Enable read
         if (sa_rdy & (counter < post_read_setup_cycles)) begin                    // Wait for post read cycle after SA ready
           counter_incr_en = 1;                                                    // Increment counter
-          next_read_data_bits[0] = sa_do;
+          next_read_data_bits[0] = sa_do; 
         end
         if (counter == post_read_setup_cycles) begin                              // Add extra cycle for disabling
           sa_en = 0;                                                              // Disable SA
@@ -378,6 +536,8 @@ module fsm (
         bl_en = 1; sl_en = 1; wl_en = 0;                                          // BSL enables (WL off)
         next_mask = di_init_mask;                                                 // SET/RST mask
         we = 1;                                                                   // Enable pulse
+        if (counter == 0)
+          cycle_counter_rst = 1;                                                  // Reset cycle count
         if (counter < idle_to_init_write_setup_cycles)                            // Counter for write setup time (in fixed-pt. repr.)
           counter_incr_en = 1;
         else begin
@@ -394,7 +554,7 @@ module fsm (
         next_mask = di_init_mask;                                                 // SET/RST mask
         next_rram_addr = address_start;                                           // RRAM address
         we = 1;                                                                   // Enable pulse
-        if (counter < `pw_defloat(pw))                                            // Counter for pulse width (convert from float repr.)
+        if (counter < `defloat(pw))                                               // Counter for pulse width (convert from float repr.)
           counter_incr_en = 1;
         else begin
           bl_en = 0; sl_en = 0; wl_en = 0; we = 0;                                // Disable pulse
@@ -411,6 +571,8 @@ module fsm (
         bsl_dac_config = set_first ? bl_dac_set_lvl_cycle : sl_dac_rst_lvl_cycle; // Write DAC levels
         wl_dac_config = set_first ? wl_dac_set_lvl_cycle : wl_dac_rst_lvl_cycle;  // Write DAC levels
         next_mask = di_init_mask;                                                 // SET/RST mask
+        if (counter == 0)
+          cycle_counter_rst = 1;                                                  // Reset cycle count
         if (counter < idle_to_init_write_setup_cycles)                            // Counter for write setup time (in fixed-pt. repr.)
           counter_incr_en = 1;
         else begin
@@ -429,7 +591,7 @@ module fsm (
         wl_dac_config = set_rst ? wl_dac_set_lvl_cycle : wl_dac_rst_lvl_cycle;    // Write DAC levels
         next_mask = di_init_mask;                                                 // SET/RST mask
         aclk = 1; we = 1;                                                         // Enable pulse
-        if (counter < `pw_defloat(pw))                                            // Counter for pulse width (convert from float repr.)
+        if (counter < `defloat(pw))                                               // Counter for pulse width (convert from float repr.)
           counter_incr_en = 1;
         else begin
           // NOTE: this is a "cooldown" clock cycle
@@ -439,7 +601,7 @@ module fsm (
           next_is_first_try = ~is_first_try;                                      // Switch from SET->RST or RST->SET mode
           next_state = `FSM_STATE_STEP_CYCLE;                                     // Return to IDLE
           if (~is_first_try) begin                                                // Check if full cycle is complete
-            if ((attempts_counter + 1) < max_attempts) begin                      // If any more SET/RST cycles left to do
+            if ((attempts_counter + 1) < `defloat(max_attempts)) begin            // If any more SET/RST cycles left to do
               attempts_counter_incr_en = 1;                                       // Go to next SET/RST cycle (attempt)
             end
             else begin                                                            // Otherwise, go to next address
@@ -474,6 +636,8 @@ module fsm (
 
       // Initialize test read: prepare pulse signals (all except aclk and we)
       `FSM_STATE_INIT_READ: begin
+        read_counter_rst = 1;                                                     // Reset read counter
+        next_read_bits_counter = 0;                                               // Reset read bits counter
         next_rangei = 0;                                                          // Range to consider (uses 0)
         bl_en = 1; sl_en = 1; wl_en = 1;                                          // WBSL enables
         for (i = 0; i < `PROG_CNFG_RANGES_LOG2_N; i=i+1) begin
@@ -484,6 +648,8 @@ module fsm (
         clamp_ref = adc_clamp_ref_lvl; read_dac_config = adc_read_dac_lvl;        // Read DAC levels
         read_ref = adc_upper_read_ref_lvl;                                        // Read level
         set_rst = 1;                                                              // Enable SET mode just to get mask matching DI
+        if (counter == 0)
+          cycle_counter_rst = 1;                                                  // Reset cycle count
         if (counter < idle_to_init_read_setup_cycles)                             // Counter for read setup time (in fixed-pt. repr.)
           counter_incr_en = 1;
         else begin
@@ -506,6 +672,10 @@ module fsm (
           end
           else begin
             counter_rst = 1;                                                      // Reset the counter
+            read_counter_incr_en = 1;                                             // Increment read counter
+            for (i = 0; i < `WORD_SIZE; i=i+1) begin                              // Count each unmasked bit
+              next_read_bits_counter = next_read_bits_counter + mask[i];          // Increment READ bits counter
+            end
             next_state = `FSM_STATE_STEP_READ;                                    // Go to step read to go to next level/address
             next_rangei = rangei + 1;                                             // Increment range index
             for (i = 0; i < `PROG_CNFG_RANGES_LOG2_N; i=i+1) begin
@@ -582,7 +752,6 @@ module fsm (
           counter_incr_en = 1;
         else begin
           counter_rst = 1;                                                        // Reset counter
-          next_is_first_try = 1;                                                  // Reset first try register
           next_state = `FSM_STATE_READ_WRITE;                                     // Go to the next step
         end
 
@@ -593,18 +762,22 @@ module fsm (
           end
         end
 
-        // If next mask is 0, then skip write pulse
-        if (next_mask == 0) begin
-          next_state = `FSM_STATE_STEP_WRITE;
-        end
+        // // OPTIMIZATION: If next mask is 0, then skip write pulse
+        // if (next_mask == 0) begin
+        //   next_state = `FSM_STATE_STEP_WRITE;
+        // end
 
         // Reset success/failure counters
-        if (opcode != `OP_REFRESH) begin
+        if ((opcode != `OP_REFRESH) & (counter == 0) & ~loop_mode) begin
+          cycle_counter_rst = 1;
           success_counter_rst = 1;
-          failure_counter_rst = 1;
           set_counter_rst = 1;
           reset_counter_rst = 1;
           read_counter_rst = 1;
+          next_failure_counter = 0;
+          next_set_bits_counter = 0;
+          next_reset_bits_counter = 0;
+          next_read_bits_counter = 0;
         end
       end
       
@@ -623,13 +796,19 @@ module fsm (
           else begin
             counter_rst = 1;                                                      // Reset the counter
             read_counter_incr_en = 1;                                             // Increment READ counter
+            for (i = 0; i < `WORD_SIZE; i=i+1) begin                              // Count each unmasked bit
+              next_read_bits_counter = next_read_bits_counter + mask[i];          // Increment READ bits counter
+            end
             next_state = `FSM_STATE_PREPULSE_WRITE;                               // Go to step read to go to next level/address
             next_mask = mask & (set_rst_loop ? ~sa_do : sa_do);                   // Update mask based on bits to be written
+            if (check63 && (read_ref == 63) && ~set_rst_loop) begin               // If looking at top level, just skip, trick to allow conductances above 63
+              next_mask = 0;                                                      // Set mask to 0 to skip top level
+            end
             if (next_mask == 0) begin                                             // If next mask is 0, then skip write pulse
-              next_state = `FSM_STATE_STEP_WRITE;                                 // Go straight to step write state
-              if (is_first_try && (attempts_counter != 0)) begin                  // If first try and at least one check has been made
-                next_rangei = rangei + 1;                                         // Go to next range
-              end
+              next_state = `FSM_STATE_PRESTEP_WRITE;                              // Go to pre step write state
+            end
+            else begin                                                            // If mask is non-zero
+              next_is_first_try = 0;                                              // It is no longer the first try
             end
           end
         end
@@ -642,7 +821,6 @@ module fsm (
         bsl_dac_en = 1; wl_dac_en = 1;                                            // DAC enables
         bsl_dac_config = bsl_loop; wl_dac_config = wl_loop;                       // Write DAC levels
         aclk = 0; we = 0;                                                         // Disable pulse
-        next_is_first_try = 0;                                                    // Disable first try
         if (counter < read_to_init_write_setup_cycles)                            // Counter for setup cycles
           counter_incr_en = 1;
         else begin
@@ -651,7 +829,7 @@ module fsm (
         end
       end
       
-      // Perform write pulsesa
+      // Perform write pulses
       `FSM_STATE_PULSE_WRITE: begin
         pw = pw_loop;                                                             // Set pulse width to loop value  
         set_rst = set_rst_loop;                                                   // Whether to perform SET/RESET
@@ -659,14 +837,56 @@ module fsm (
         bsl_dac_en = 1; wl_dac_en = 1;                                            // DAC enables
         bsl_dac_config = bsl_loop; wl_dac_config = wl_loop;                       // Write DAC levels
         aclk = 1; we = 1;                                                         // Enable pulse
-        if (counter < `pw_defloat(pw))                                            // Counter for pulse width (convert from float repr.)
+        if (counter < `defloat(pw))                                               // Counter for pulse width (convert from float repr.)
           counter_incr_en = 1;
         else begin
+          if (set_rst_loop) begin
+            set_counter_incr_en = 1;                                              // Increment SET counter
+            for (i = 0; i < `WORD_SIZE; i=i+1) begin                              // Count each unmasked bit
+              next_set_bits_counter = next_set_bits_counter + mask[i];            // Increment SET bits counter
+            end
+          end
+          else begin
+            reset_counter_incr_en = 1;                                            // Increment RESET counter
+            for (i = 0; i < `WORD_SIZE; i=i+1) begin                              // Count each unmasked bit
+              next_reset_bits_counter = next_reset_bits_counter + mask[i];        // Increment RESET bits counter
+            end
+          end
           aclk = 0; we = 0;                                                       // Disable pulse
-          set_counter_incr_en = set_rst_loop;                                     // Increment SET counter (if appropriate)
-          reset_counter_incr_en = ~set_rst_loop;                                  // Increment RESET counter (if appropriate)
+          attempts_counter_incr_en = 1;                                           // Increment attempts counter
           counter_rst = 1;                                                        // Reset counter
           next_state = `FSM_STATE_STEP_WRITE;                                     // Step the write parameters
+        end
+      end
+
+      // Add one cycle before stepping write; this step is also used to increment rangei, addr, and break out
+      `FSM_STATE_PRESTEP_WRITE: begin
+        bl_en = 1; sl_en = 1; wl_en = 1;                                          // WBSL enables
+        bleed_en = 1; read_dac_en = 1;                                            // DAC enables
+        clamp_ref = adc_clamp_ref_lvl; read_dac_config = adc_read_dac_lvl;        // Read DAC levels
+        read_ref = set_rst_loop ? adc_lower_write_ref_lvl : adc_upper_write_ref_lvl; // Read level should be lower write ref level if SET, upper write ref level if RESET
+        set_rst = 1;                                                              // Enable SET mode just to get mask matching DI
+        next_state = `FSM_STATE_STEP_WRITE;                                       // Go directly to step write
+        // If it was the first try and not the first attempt
+        if ((is_first_try & ((attempts_counter != 0) | (set_rst_loop != set_first))) | ((attempts_counter >= `defloat(max_attempts)) & ignore_failures)) begin
+          next_set_rst_loop = ~set_first;                                         // Initialize whether to do SET/RESET (gets flipped in FSM_STATE_STEP_WRITE!)
+          next_rangei = rangei + 1;                                               // Increment rangei
+          attempts_counter_rst = 1;                                               // Reset attempts counter
+          // Update address if done with all ranges
+          if (next_rangei == num_levels) begin                                    // Check if rangei reached maximum
+            next_rangei = 0;                                                      // Start from range 0
+            success_counter_incr_en = 1;                                          // Record success
+            next_rram_addr = rram_addr + address_step;                            // Increment address
+            lfsr_en = 1;                                                          // Enable LFSR next data
+            // Break out of loop and go to IDLE if done with all addresses
+            if ((rram_addr >= address_stop) | ~use_multi_addrs) begin             // If finished with all addresses
+              next_state = loop_mode ? `FSM_STATE_INIT_WRITE : `FSM_STATE_IDLE;   // Return to INIT/IDLE depending on loop mode
+            end
+            // If refresh, go to read function
+            if (opcode == `OP_REFRESH) begin                                      // Check if doing REFRESH op
+              next_state = `FSM_STATE_INIT_READ;                                  // If refresh, go to READ
+            end
+          end
         end
       end
 
@@ -678,21 +898,7 @@ module fsm (
           if (mask == 0) begin
             // Switch between SET/RESET mode and reset the first try
             next_set_rst_loop = ~set_rst_loop;                                    // Switch between SET/RESET
-            next_is_first_try = 1;                                                // Reset first try registers
-            attempts_counter_incr_en = 1;                                         // Attempts counter
-            // If it was the first try, the range index just incremented (rangei gets incremented in FSM_STATE_READ_WRITE)
-            if (is_first_try && (attempts_counter != 0)) begin
-              next_set_rst_loop = set_first;                                      // Initialize whether to do SET/RESET
-              // Update address if done with all ranges
-              if (rangei == num_levels) begin                                     // Check if rangei reached maximum
-                success_counter_incr_en = 1;                                      // Record success
-                next_rram_addr = rram_addr + address_step;                        // Increment address
-                // Break out of loop and go to IDLE if done with all addresses
-                if ((next_rram_addr > address_stop) | ~use_multi_addrs) begin     // If finished with all addresses
-                  next_state = `FSM_STATE_IDLE;                                   // Return to IDLE
-                end
-              end
-            end
+            next_is_first_try = 1;                                                // Reset first try
             // Update loop variables to starting values
             next_wl_loop = next_set_rst_loop ? wl_dac_set_lvl_start : wl_dac_rst_lvl_start; // Initialize WL DAC level
             next_bsl_loop = next_set_rst_loop ? bl_dac_set_lvl_start : sl_dac_rst_lvl_start; // Initialize BSL DAC level
@@ -700,7 +906,7 @@ module fsm (
             next_mask = di_init_mask;                                             // Reset mask to initial value
             // Initialize mask based on bits to be written
             for (i = 0; i < `WORD_SIZE; i=i+1) begin
-              if ({write_data[3][i], write_data[2][i], write_data[1][i], write_data[0][i]} != rangei) begin
+              if ({write_data[3][i], write_data[2][i], write_data[1][i], write_data[0][i]} != next_rangei) begin
                 next_mask[i] = 0;
               end
             end
@@ -712,57 +918,54 @@ module fsm (
                 // Increment BL
                 next_bsl_loop = bsl_loop + (set_rst_loop ? bl_dac_set_lvl_step : sl_dac_rst_lvl_step);
                 // Check if BSL overflowed or reached maximum, and if so: reset value and increment WL
-                if ((next_bsl_loop == 0) || (next_bsl_loop >= (set_rst_loop ? bl_dac_set_lvl_stop : sl_dac_rst_lvl_stop))) begin
+                if (next_bsl_loop >= (set_rst_loop ? bl_dac_set_lvl_stop : sl_dac_rst_lvl_stop)) begin
                   next_bsl_loop = (set_rst_loop ? bl_dac_set_lvl_start : sl_dac_rst_lvl_start);
                   next_wl_loop = wl_loop + (set_rst_loop ? wl_dac_set_lvl_step : wl_dac_rst_lvl_step);
                 end
                 // Check if WL overflowed or reached maximum, and if so: reset value and increment PW
-                if ((next_wl_loop == 0) || (next_wl_loop >= (set_rst_loop ? wl_dac_set_lvl_stop : wl_dac_rst_lvl_stop))) begin
+                if (next_wl_loop >= (set_rst_loop ? wl_dac_set_lvl_stop : wl_dac_rst_lvl_stop)) begin
                   next_wl_loop = (set_rst_loop ? wl_dac_set_lvl_start : wl_dac_rst_lvl_start);
                   next_pw_loop = pw_loop + (set_rst_loop ? pw_set_step : pw_rst_step);
                 end
                 // Check if PW overflowed or reached maximum, and if so: reset value and increment attempts counter
-                if ((next_pw_loop == 0) || (next_pw_loop >= (set_rst_loop ? pw_set_stop : pw_rst_stop))) begin
+                if (next_pw_loop >= (set_rst_loop ? pw_set_stop : pw_rst_stop)) begin
                   next_pw_loop = (set_rst_loop ? pw_set_start : pw_rst_start);
-                  attempts_counter_incr_en = 1;
                 end
               end
               `LOOP_PBW: begin
                 // Increment WL
                 next_wl_loop = wl_loop + (set_rst_loop ? wl_dac_set_lvl_step : wl_dac_rst_lvl_step);
                 // Check if WL overflowed or reached maximum, and if so: reset value and increment BSL
-                if ((next_wl_loop == 0) || (next_wl_loop >= (set_rst_loop ? wl_dac_set_lvl_stop : wl_dac_rst_lvl_stop))) begin
+                if (next_wl_loop >= (set_rst_loop ? wl_dac_set_lvl_stop : wl_dac_rst_lvl_stop)) begin
                   next_wl_loop = (set_rst_loop ? wl_dac_set_lvl_start : wl_dac_rst_lvl_start);
                   next_bsl_loop = bsl_loop + (set_rst_loop ? bl_dac_set_lvl_step : sl_dac_rst_lvl_step);
                 end
                 // Check if BSL overflowed or reached maximum, and if so: reset value and increment PW
-                if ((next_bsl_loop == 0) || (next_bsl_loop >= (set_rst_loop ? bl_dac_set_lvl_stop : sl_dac_rst_lvl_stop))) begin
+                if (next_bsl_loop >= (set_rst_loop ? bl_dac_set_lvl_stop : sl_dac_rst_lvl_stop)) begin
                   next_bsl_loop = (set_rst_loop ? bl_dac_set_lvl_start : sl_dac_rst_lvl_start);
                   next_pw_loop = pw_loop + (set_rst_loop ? pw_set_step : pw_rst_step);
                 end
                 // Check if PW overflowed or reached maximum, and if so: reset value and increment attempts counter
-                if ((next_wl_loop == 0) || (next_wl_loop >= (set_rst_loop ? wl_dac_set_lvl_stop : wl_dac_rst_lvl_stop))) begin
+                if (next_pw_loop >= (set_rst_loop ? pw_set_stop : pw_rst_stop)) begin
                   next_pw_loop = (set_rst_loop ? pw_set_start : pw_rst_start);
-                  attempts_counter_incr_en = 1;
                 end
               end
               `LOOP_WBP: begin
                 // Increment PW
                 next_pw_loop = pw_loop + (set_rst_loop ? pw_set_step : pw_rst_step);
                 // Check if PW overflowed or reached maximum, and if so: reset value and increment BSL
-                if ((next_pw_loop == 0) || (next_pw_loop >= (set_rst_loop ? pw_set_stop : pw_rst_stop))) begin
+                if (next_pw_loop >= (set_rst_loop ? pw_set_stop : pw_rst_stop)) begin
                   next_pw_loop = (set_rst_loop ? pw_set_start : pw_rst_start);
                   next_bsl_loop = bsl_loop + (set_rst_loop ? bl_dac_set_lvl_step : sl_dac_rst_lvl_step);
                 end
                 // Check if BSL overflowed or reached maximum, and if so: reset value and increment WL
-                if ((next_wl_loop == 0) || (next_wl_loop >= (set_rst_loop ? wl_dac_set_lvl_stop : wl_dac_rst_lvl_stop))) begin
+                if (next_bsl_loop >= (set_rst_loop ? bl_dac_set_lvl_stop : sl_dac_rst_lvl_stop)) begin
                   next_bsl_loop = (set_rst_loop ? bl_dac_set_lvl_start : sl_dac_rst_lvl_start);
                   next_wl_loop = wl_loop + (set_rst_loop ? wl_dac_set_lvl_step : wl_dac_rst_lvl_step);
                 end
                 // Check if WL overflowed or reached maximum, and if so: reset value and increment attempts counter
-                if ((next_wl_loop == 0) || (next_wl_loop >= (set_rst_loop ? wl_dac_set_lvl_stop : wl_dac_rst_lvl_stop))) begin
+                if (next_wl_loop >= (set_rst_loop ? wl_dac_set_lvl_stop : wl_dac_rst_lvl_stop)) begin
                   next_wl_loop = (set_rst_loop ? wl_dac_set_lvl_start : wl_dac_rst_lvl_start);
-                  attempts_counter_incr_en = 1;
                 end
               end
               `LOOP_WPB: begin
@@ -781,62 +984,52 @@ module fsm (
                 // Check if WL overflowed or reached maximum, and if so: reset value and increment attempts counter
                 if ((next_wl_loop == 0) || (next_wl_loop >= (set_rst_loop ? wl_dac_set_lvl_stop : wl_dac_rst_lvl_stop))) begin
                   next_wl_loop = (set_rst_loop ? wl_dac_set_lvl_start : wl_dac_rst_lvl_start);
-                  attempts_counter_incr_en = 1;
                 end
               end
               `LOOP_BWP: begin
                 // Increment PW
                 next_pw_loop = pw_loop + (set_rst_loop ? pw_set_step : pw_rst_step);
                 // Check if PW overflowed or reached maximum, and if so: reset value and increment WL
-                if ((next_pw_loop == 0) || (next_pw_loop >= (set_rst_loop ? pw_set_stop : pw_rst_stop))) begin
+                if (next_pw_loop >= (set_rst_loop ? pw_set_stop : pw_rst_stop)) begin
                   next_pw_loop = (set_rst_loop ? pw_set_start : pw_rst_start);
                   next_wl_loop = wl_loop + (set_rst_loop ? wl_dac_set_lvl_step : wl_dac_rst_lvl_step);
                 end
                 // Check if WL overflowed or reached maximum, and if so: reset value and increment BSL
-                if ((next_wl_loop == 0) || (next_wl_loop >= (set_rst_loop ? wl_dac_set_lvl_stop : wl_dac_rst_lvl_stop))) begin
+                if (next_wl_loop >= (set_rst_loop ? wl_dac_set_lvl_stop : wl_dac_rst_lvl_stop)) begin
                   next_wl_loop = (set_rst_loop ? wl_dac_set_lvl_start : wl_dac_rst_lvl_start);
                   next_bsl_loop = bsl_loop + (set_rst_loop ? bl_dac_set_lvl_step : sl_dac_rst_lvl_step);
                 end
                 // Check if BL overflowed or reached maximum, and if so: reset value and increment attempts counter
-                if ((next_bsl_loop == 0) || (next_bsl_loop >= (set_rst_loop ? bl_dac_set_lvl_stop : sl_dac_rst_lvl_stop))) begin
+                if (next_bsl_loop >= (set_rst_loop ? bl_dac_set_lvl_stop : sl_dac_rst_lvl_stop)) begin
                   next_bsl_loop = (set_rst_loop ? bl_dac_set_lvl_start : sl_dac_rst_lvl_start);
-                  attempts_counter_incr_en = 1;
                 end
               end
               default: begin // `LOOP_BPW
                 // Increment WL
                 next_wl_loop = wl_loop + (set_rst_loop ? wl_dac_set_lvl_step : wl_dac_rst_lvl_step);
                 // Check if WL overflowed or reached maximum, and if so: reset value and increment PW
-                if ((next_wl_loop == 0) || (next_wl_loop >= (set_rst_loop ? wl_dac_set_lvl_stop : wl_dac_rst_lvl_stop))) begin
+                if (next_wl_loop >= (set_rst_loop ? wl_dac_set_lvl_stop : wl_dac_rst_lvl_stop)) begin
                   next_wl_loop = (set_rst_loop ? wl_dac_set_lvl_start : wl_dac_rst_lvl_start);
                   next_pw_loop = pw_loop + (set_rst_loop ? pw_set_step : pw_rst_step);
                 end
                 // Check if PW overflowed or reached maximum, and if so: reset value and increment BSL
-                if ((next_pw_loop == 0) || (next_pw_loop >= (set_rst_loop ? pw_set_stop : pw_rst_stop))) begin
+                if (next_pw_loop >= (set_rst_loop ? pw_set_stop : pw_rst_stop)) begin
                   next_pw_loop = (set_rst_loop ? pw_set_start : pw_rst_start);
                   next_bsl_loop = bsl_loop + (set_rst_loop ? bl_dac_set_lvl_step : sl_dac_rst_lvl_step);
                 end
                 // Check if BL overflowed or reached maximum, and if so: reset value and increment attempts counter
-                if ((next_bsl_loop == 0) || (next_bsl_loop >= (set_rst_loop ? bl_dac_set_lvl_stop : sl_dac_rst_lvl_stop))) begin
+                if (next_bsl_loop >= (set_rst_loop ? bl_dac_set_lvl_stop : sl_dac_rst_lvl_stop)) begin
                   next_bsl_loop = (set_rst_loop ? bl_dac_set_lvl_start : sl_dac_rst_lvl_start);
-                  attempts_counter_incr_en = 1;
                 end
               end
             endcase
-            // Check if attempts counter reached maximum, and if so: reset value and increment failures
-            if ((attempts_counter + 1) >= max_attempts) begin
-              // If failures are ignored, increment failure counter
-              if (ignore_failures) begin
-                failure_counter_incr_en = 1;
-              end
-              // Otherwise, go back to IDLE
-              else begin
-                next_state = `FSM_STATE_IDLE;                                     // Return to IDLE
-              end
-            end
-            // Check if failures counter overflowed, and if so: go to IDLE
-            if (failure_counter == {16{1'b1}}) begin
-              next_state = `FSM_STATE_IDLE;                                       // Return to IDLE
+          end
+          // Check if attempts counter reached maximum, and if so: reset value and increment failures
+          if (((attempts_counter + attempts_counter_incr_en) >= `defloat(max_attempts)) & ignore_failures) begin
+            // $info("T=%0t [FSM] Maximum number of attempts reached, attempts=%0d max_attempts=%0d", $time, attempts_counter, `defloat(max_attempts));
+            next_mask = 0;
+            for (i = 0; i < `WORD_SIZE; i=i+1) begin                              // Count each unmasked bit as failure
+              next_failure_counter = next_failure_counter + mask[i];              // Increment failure bits counter
             end
           end
         end
@@ -846,7 +1039,12 @@ module fsm (
           counter_incr_en = 1;
         else begin
           counter_rst = 1;                                                        // Reset counter
-          next_state = ((opcode == `OP_REFRESH) && (mask == 0) && is_first_try && (attempts_counter != 0) && (rangei == num_levels)) ? `FSM_STATE_INIT_READ : `FSM_STATE_READ_WRITE; // Return to WRITE (or READ if REFRESH op and just finished an address)
+          next_state = `FSM_STATE_READ_WRITE;                                     // Return to WRITE
+        end
+
+        // Return to idle if attempts or failures have overflowed
+        if ((((attempts_counter + attempts_counter_incr_en) >= `defloat(max_attempts)) & ~ignore_failures)) begin
+          next_state = `FSM_STATE_IDLE;                                           // Return to IDLE
         end
 
         // Set signals in preparation for READ
@@ -873,8 +1071,9 @@ module fsm (
   assign di = mask ~^ {`WORD_SIZE{set_rst}};
 
   // FSM full state config bits
-  assign fsm_bits = {next_rangei, next_is_first_try, attempts_counter_rst, attempts_counter_incr_en, counter_rst, counter_incr_en, is_first_try, attempts_counter, counter, pw, rangei, wl_en, wl_dac_en, wl_dac_config, we, sl_en, set_rst, sa_en, sa_clk, rram_addr, read_ref, read_dac_en, read_dac_config, di, clamp_ref, bsl_dac_en, bsl_dac_config, bleed_en, bl_en, aclk, next_state, state};
+  assign fsm_bits = {4'b1111, next_is_first_try, attempts_counter_rst, attempts_counter_incr_en, counter_rst, counter_incr_en, is_first_try, max_attempts, counter, pw, 4'b1111, wl_en, wl_dac_en, wl_dac_config, we, sl_en, set_rst, sa_en, 1'b1, rram_addr, read_ref, read_dac_en, read_dac_config, di, clamp_ref, bsl_dac_en, bsl_dac_config, bleed_en, bl_en, aclk, next_state, state};
 
   // FSM diagnostic bits
   assign diag_bits = {reset_counter, set_counter, read_counter, failure_counter, success_counter};
+  assign diag2_bits = {reset_bits_counter, set_bits_counter, read_bits_counter, cycle_counter};
 endmodule

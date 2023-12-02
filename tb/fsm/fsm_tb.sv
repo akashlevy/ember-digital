@@ -71,6 +71,10 @@ module fsm_tb;
     .fsm_go(vif.fsm_go),
     .opcode(vif.opcode),
     .use_multi_addrs(vif.use_multi_addrs),
+    .use_lfsr_data(vif.use_lfsr_data),
+    .use_cb_data(vif.use_cb_data),
+    .check63(vif.check63),
+    .loop_mode(vif.loop_mode),
 
     .aclk(vif.aclk),
     .bl_en(vif.bl_en),
@@ -97,6 +101,7 @@ module fsm_tb;
 
     .fsm_bits(vif.fsm_state),
     .diag_bits(vif.diag_state),
+    .diag2_bits(vif.diag2_state),
 
     .write_data_bits(vif.write_data_bits),
     .read_data_bits(vif.read_data_bits),

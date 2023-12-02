@@ -44,6 +44,10 @@ class spi_slave_rram_tb_sb;
         bit [`CNFG_REG_ADDR_BITS_N-1:0] rd = item.addr - (`PROG_CNFG_RANGES_N+5+`PROG_CNFG_RANGES_LOG2_N);
         assert(item.rdata == item.readdata[rd]) else $error("T=%0t [SPI Scoreboard] ERROR! Readout data read, addr=0x%0h exp=0x%0h act=0x%0h", $time, item.addr, item.readdata[rd], item.rdata);
       end
+      // FSM diagnostic bits 2 readout
+      else if ((item.addr == `PROG_CNFG_RANGES_N+5+2*`PROG_CNFG_RANGES_LOG2_N) && !item.wr) begin
+        assert(item.rdata == item.diag2data) else $error("T=%0t [SPI Scoreboard] ERROR! FSM diagnostic bits 2 read, addr=0x%0h exp=0x%0h act=0x%0h", $time, item.addr, item.diag2data, item.rdata);
+      end
       // Invalid address to write to
       else if (item.addr >= (`PROG_CNFG_RANGES_LOG2_N + `PROG_CNFG_RANGES_N + 4) && item.wr) begin
         assert(0) else $error("T=%0t [SPI Scoreboard] ERROR! Invalid store address addr=0x%0h wr=0x%0h data=0x%0h", $time, item.addr, item.wr, item.wdata);

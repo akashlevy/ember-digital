@@ -90,7 +90,7 @@ class rram_top_driver;
       // FSM command
       pkt = new;
       pkt.addr = `PROG_CNFG_RANGES_N + 6;
-      pkt.wdata = {item.use_multi_addrs, item.opcode};
+      pkt.wdata = {item.loop_mode, item.check63, item.use_cb_data, item.use_lfsr_data, item.use_multi_addrs, item.opcode};
       pkt.wr = 1;
       spi_mbx.put(pkt);
 

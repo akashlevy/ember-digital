@@ -10,9 +10,13 @@ class fsm_tb_pkt;
   // Opcode
   rand bit  [`OP_CODE_BITS_N-1:0]           opcode;
   rand bit                                  use_multi_addrs;
+  rand bit                                  use_lfsr_data;
+  rand bit                                  use_cb_data;
+  rand bit                                  check63;
+  rand bit                                  loop_mode;
 
   // Read and write data bits
-  bit       [`WORD_SIZE-1:0]                read_data_bits [`PROG_CNFG_RANGES_LOG2_N-1:0];
+  bit       [`WORD_SIZE-1:0]                read_data_bits  [`PROG_CNFG_RANGES_LOG2_N-1:0];
   rand bit  [`WORD_SIZE-1:0]                write_data_bits [`PROG_CNFG_RANGES_LOG2_N-1:0];
 
   // Global parameters from register array
@@ -77,10 +81,17 @@ class fsm_tb_pkt;
   // Behavioral model conductance
   bit [`ADC_BITS_N-1:0] g [`NUM_WORDS-1:0][`WORD_SIZE-1:0];
 
+  // Do not loop
+  constraint no_loop {
+    loop_mode == 0;
+  }
+
   // Number of levels randomization constraints
   constraint num_levels_constraints {
     // Cannot be one level (NOTE: num_levels == 0 is actually 16 levels)
     num_levels != 1;
+    (use_lfsr_data || use_cb_data) -> (num_levels == 0) || (num_levels == 2) || (num_levels == 4) || (num_levels == 8);
+    use_lfsr_data -> !use_cb_data;
   }
 
   // Constrain settings to be configured based on the number of levels
@@ -158,19 +169,36 @@ class fsm_tb_pkt;
     }
   }
 
+  // // SET pulse width randomization constraints
+  // constraint pw_set_constraints {
+  //   foreach (pw_set_start[i]) {
+  //     // Constrain pw_set_stop to be a multiple of pw_set_step greater than pw_set_start
+  //     (`defloat(pw_set_stop[i]) - `defloat(pw_set_start[i])) % `defloat(pw_set_step[i]) == 0;
+  //     (`defloat(pw_set_stop[i]) - `defloat(pw_set_start[i])) >= `defloat(pw_set_step[i]);
+  //     `defloat(pw_set_stop[i]) > `defloat(pw_set_start[i]);
+
+  //     // Constrain total number of steps to not be too large
+  //     `defloat(pw_set_stop[i]) <= `defloat(pw_set_start[i]) + `defloat(pw_set_step[i]) * 10;
+
+  //     // Constrain PW to not be too large
+  //     `defloat(pw_set_stop[i]) < 10;
+  //   }
+  // }
+
   // SET pulse width randomization constraints
   constraint pw_set_constraints {
     foreach (pw_set_start[i]) {
       // Constrain pw_set_stop to be a multiple of pw_set_step greater than pw_set_start
-      (`pw_defloat(pw_set_stop[i]) - `pw_defloat(pw_set_start[i])) % `pw_defloat(pw_set_step[i]) == 0;
-      (`pw_defloat(pw_set_stop[i]) - `pw_defloat(pw_set_start[i])) >= `pw_defloat(pw_set_step[i]);
-      `pw_defloat(pw_set_stop[i]) > `pw_defloat(pw_set_start[i]);
+      (pw_set_stop[i] - pw_set_start[i]) % pw_set_step[i] == 0;
+      (pw_set_stop[i] - pw_set_start[i]) >= pw_set_step[i];
+      pw_set_stop[i] > pw_set_start[i];
 
       // Constrain total number of steps to not be too large
-      `pw_defloat(pw_set_stop[i]) <= `pw_defloat(pw_set_start[i]) + `pw_defloat(pw_set_step[i]) * 10;
+      pw_set_stop[i] <= pw_set_start[i] + pw_set_step[i] * 10;
 
-      // Constrain PW to not be too large
-      `pw_defloat(pw_set_stop[i]) < 100;
+      // Constrain PW to not be zero or too large
+      pw_set_start[i] > 0;
+      pw_set_stop[i] < 16;
     }
   }
 
@@ -200,26 +228,42 @@ class fsm_tb_pkt;
     }
   }
 
+  // // RESET pulse width randomization constraints
+  // constraint pw_rst_constraints {
+  //   foreach (pw_rst_start[i]) {
+  //     // Constrain pw_rst_stop to be a multiple of pw_rst_step greater than pw_rst_start
+  //     (`defloat(pw_rst_stop[i]) - `defloat(pw_rst_start[i])) % `defloat(pw_rst_step[i]) == 0;
+  //     (`defloat(pw_rst_stop[i]) - `defloat(pw_rst_start[i])) >= `defloat(pw_rst_step[i]);
+  //     `defloat(pw_rst_stop[i]) > `defloat(pw_rst_start[i]);
+
+  //     // Constrain total number of steps to not be too large
+  //     `defloat(pw_rst_stop[i]) <= `defloat(pw_rst_start[i]) + `defloat(pw_rst_step[i]) * 10;
+
+  //     // Constrain PW to not be too large
+  //     `defloat(pw_rst_stop[i]) < 100;
+  //   }
+  // }
+
   // RESET pulse width randomization constraints
   constraint pw_rst_constraints {
     foreach (pw_rst_start[i]) {
       // Constrain pw_rst_stop to be a multiple of pw_rst_step greater than pw_rst_start
-      (`pw_defloat(pw_rst_stop[i]) - `pw_defloat(pw_rst_start[i])) % `pw_defloat(pw_rst_step[i]) == 0;
-      (`pw_defloat(pw_rst_stop[i]) - `pw_defloat(pw_rst_start[i])) >= `pw_defloat(pw_rst_step[i]);
-      `pw_defloat(pw_rst_stop[i]) > `pw_defloat(pw_rst_start[i]);
+      (pw_rst_stop[i] - pw_rst_start[i]) % pw_rst_step[i] == 0;
+      (pw_rst_stop[i] - pw_rst_start[i]) >= pw_rst_step[i];
+      pw_rst_stop[i] > pw_rst_start[i];
 
       // Constrain total number of steps to not be too large
-      `pw_defloat(pw_rst_stop[i]) <= `pw_defloat(pw_rst_start[i]) + `pw_defloat(pw_rst_step[i]) * 10;
+      pw_rst_stop[i] <= pw_rst_start[i] + pw_rst_step[i] * 10;
 
-      // Constrain PW to not be too large
-      `pw_defloat(pw_rst_stop[i]) < 100;
+      // Constrain PW to not be zero or too large
+      pw_rst_start[i] > 0;
+      pw_rst_stop[i] < 16;
     }
   }
 
   // Maximum number of attempts randomization constraints
   constraint max_attempts_constraints {
-    max_attempts > 1;
-    max_attempts <= 10;
+    max_attempts[4:0] > 1;
   }
 
   // Constrain loop order
@@ -261,7 +305,7 @@ class fsm_tb_pkt;
     address_stop > address_start;
 
     // Constrain total number of address steps to not be too large
-    address_stop < address_start + address_step * 10;
+    address_stop <= address_start + address_step * 5;
   }
 
   // This function allows us to print contents of the data packet
@@ -272,7 +316,7 @@ class fsm_tb_pkt;
     end
     else begin
       // Display driver operation
-      $display("T=%0t [%s] addr=%0d-%0d-%0d op=%0d", $time, tag, address_start, address_stop, address_step, opcode);
+      $display("T=%0t [%s] addr=%0d-%0d-%0d op=%0d max_attempts=%0d", $time, tag, address_start, address_stop, address_step, opcode, max_attempts);
       
       // Display ADC levels
       if (`DEBUG_ADC_LVLS) begin
@@ -284,10 +328,10 @@ class fsm_tb_pkt;
       // Display PW stepping
       if (`DEBUG_PWS) begin
         foreach (pw_set_start[i]) begin
-          $display("Range %0d SET PW stepping: %0d-%0d-%0d", i, `pw_defloat(pw_set_start[i]), `pw_defloat(pw_set_stop[i]), `pw_defloat(pw_set_step[i]));
+          $display("Range %0d SET PW stepping: %0d-%0d-%0d", i, `defloat(pw_set_start[i]), `defloat(pw_set_stop[i]), `defloat(pw_set_step[i]));
         end
         foreach (pw_rst_start[i]) begin
-          $display("Range %0d RST PW stepping: %0d-%0d-%0d", i, `pw_defloat(pw_rst_start[i]), `pw_defloat(pw_rst_stop[i]), `pw_defloat(pw_rst_step[i]));
+          $display("Range %0d RST PW stepping: %0d-%0d-%0d", i, `defloat(pw_rst_start[i]), `defloat(pw_rst_stop[i]), `defloat(pw_rst_step[i]));
         end
       end
 

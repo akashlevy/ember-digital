@@ -15,6 +15,10 @@ module spi_slave_rram (
   output reg                                  fsm_go,
   output wire [`OP_CODE_BITS_N-1:0]           opcode,
   output wire                                 use_multi_addrs,
+  output wire                                 use_lfsr_data,
+  output wire                                 use_cb_data,
+  output wire                                 check63,
+  output wire                                 loop_mode,
 
   // Register array interface
   output wire [`ADDR_BITS_N-1:0]              address_start,
@@ -72,6 +76,7 @@ module spi_slave_rram (
   input       [`PROG_CNFG_RANGES_LOG2_N-1:0]  rangei,     // for indexing which programming settings to use from FSM
   input       [`FSM_FULL_STATE_BITS_N-1:0]    fsm_bits,   // state of all regs in FSM 
   input       [`FSM_DIAG_BITS_N-1:0]          diag_bits,  // diagnostic bits in FSM 
+  input       [`FSM_DIAG_BITS_N-1:0]          diag2_bits, // more diagnostic bits in FSM
 
   // NOTE: these 2-D array constructs are only supported by SystemVerilog, WONTFIX: could be flattened/unflattened
   input       [`WORD_SIZE-1:0]                read_data_bits [`PROG_CNFG_RANGES_LOG2_N-1:0],
@@ -191,7 +196,11 @@ module spi_slave_rram (
 
   // FSM command bits
   assign opcode = fsm_cmd_bits[`OP_CODE_BITS_N-1:0];
-  assign use_multi_addrs = fsm_cmd_bits[`FSM_CMD_BITS_N-1];
+  assign use_multi_addrs = fsm_cmd_bits[`FSM_CMD_BITS_N-5];
+  assign use_lfsr_data = fsm_cmd_bits[`FSM_CMD_BITS_N-4];
+  assign use_cb_data = fsm_cmd_bits[`FSM_CMD_BITS_N-3];
+  assign check63 = fsm_cmd_bits[`FSM_CMD_BITS_N-2];
+  assign loop_mode = fsm_cmd_bits[`FSM_CMD_BITS_N-1];
 
   // Set the SPI read data wire
   always @* begin
@@ -219,6 +228,9 @@ module spi_slave_rram (
     // Read data register next
     else if ((paddr >= `PROG_CNFG_RANGES_N+5+`PROG_CNFG_RANGES_LOG2_N) && (paddr < `PROG_CNFG_RANGES_N+5+2*`PROG_CNFG_RANGES_LOG2_N))
       prdata = read_data_bits[paddr[`PROG_CNFG_RANGES_LOG2_N-1:0]-(5+`PROG_CNFG_RANGES_LOG2_N)];
+    // FSM diagnostic bits 2 next
+    else if (paddr == `PROG_CNFG_RANGES_N+5+2*`PROG_CNFG_RANGES_LOG2_N)
+      prdata = diag2_bits;
     // Reset configuration bits by accessing the highest possible register
     else if (paddr == APB_RST_ADDR)
       prdata = APB_RST_DATA;
