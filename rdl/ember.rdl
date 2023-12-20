@@ -1,0 +1,640 @@
+// ============================================================================
+//
+// Program  : ember.rdl
+// Language : System Register Description Language (SystemRDL) 2.0
+// Purpose  : EMBER configuration register description
+//
+// ============================================================================
+
+// EMBER address map
+addrmap ember_regs
+#(
+  // Log2 of number of ADC levels on readout circuit
+  longint ADC_BITS_N = 6,
+  // Log2 of number of DAC levels for WL DAC
+  longint WL_DAC_BITS_N = 8,
+  // Log2 of number of DAC levels for BL/SL DAC
+  longint BSL_DAC_BITS_N = 5,
+  // Log2 of number of DAC levels for READ DAC
+  longint READ_DAC_BITS_N = 4,
+  // Number of bits to use for PW (NOTE: this is a float, 3 exp bits, 5 mantissa)
+  longint PW_BITS_N = 8,
+  longint PW_FULL_BITS_N = 14,
+
+  // Log2 of number of possible loop orders
+  longint LOOP_BITS_N = 3,
+  // Number of bits to represent maximum number of programming attempts (up to 255)
+  longint MAX_ATTEMPTS_BITS_N = 8,
+
+  // Log2 of maximum number of programming ranges
+  longint PROG_CNFG_RANGES_LOG2_N = 4,
+  longint PROG_CNFG_RANGES_N = 1 << PROG_CNFG_RANGES_LOG2_N,
+
+  // Word size number of bits read in parallel number of SAs
+  longint WORD_SIZE = 48,
+
+  // Address size log2(number of WLs) + log2(column mux ratio) 10 + 6
+  longint ADDR_BITS_N = 16,
+
+  // Number of bits to represent the number of setup cycles
+  longint SETUP_CYC_BITS_N = 6,
+
+  // Number of bits for FSM stuff
+  longint FSM_DIAG_COUNT_BITS_N = 32,
+  longint FSM_STATE_BITS_N = 5,
+  longint OP_CODE_BITS_N = 3
+)
+{
+  name = "EMBER Address Map";
+  desc = "Address map containing the EMBER register file specifications. To get SPI register file addresses, all offsets/sizes should be divided by 32.";
+
+  // Register widths
+  addressing = compact;
+  default regwidth = 256;
+
+  // Types of enums
+  enum loop_order_enum {
+    pwb = 3'd0  { desc = "Outer loop is pulse width, middle loop is WL DAC, inner loop is BL DAC"; };
+    pbw = 3'd1  { desc = "Outer loop is pulse width, middle loop is BL DAC, inner loop is WL DAC"; };
+    wbp = 3'd2  { desc = "Outer loop is WL DAC, middle loop is BL DAC, inner loop is pulse width"; };
+    wpb = 3'd3  { desc = "Outer loop is WL DAC, middle loop is pulse width, inner loop is BL DAC"; };
+    bwp = 3'd4  { desc = "Outer loop is BL DAC, middle loop is pulse width, inner loop is WL DAC"; };
+    bpw = 3'd5  { desc = "Outer loop is BL DAC, middle loop is WL DAC, inner loop is pulse width"; };
+  };
+  enum opcode_enum {
+    test_pulse = 3'd0   { desc = "Test pulse"; };
+    test_read = 3'd1    { desc = "Test read"; };
+    test_cpulse = 3'd2  { desc = "Test charge pulse"; };
+    cycle = 3'd3        { desc = "Cycle"; };
+    read = 3'd4         { desc = "Read"; };
+    write = 3'd5        { desc = "Write"; };
+    refresh = 3'd6      { desc = "Refresh"; };
+    read_energy = 3'd7  { desc = "Read energy"; };
+  };
+
+  // Types of registers
+  reg apb_reset_reg {
+    name = "APB Reset Register";
+    desc = "Reset the register file, return ASCII 'RAM'";
+    field { sw = r; hw = na;
+      name = "APB Reset";
+      desc = "Read-only register that returns ASCII 'RAM'";
+      fieldwidth = 32;
+    } ram = 32'h52414D;
+  };
+  reg global_settings_reg {
+    name = "Global Settings Register";
+    desc = "Register containing all of the global settings for operating the RRAM macro";
+    field { sw = rw; hw = r;
+      name = "Maximum Programming Attempts";
+      desc = "Maximum number of programming attempts before giving up";
+      fieldwidth = MAX_ATTEMPTS_BITS_N;
+    } max_attempts = 0;
+    field { sw = rw; hw = r;
+      name = "Use ECC";
+      desc = "Whether to use ECC to correct errors";
+      fieldwidth = 1;
+    } use_ecc = 0;
+    field num_levels { sw = rw; hw = r;
+      name = "Number of Levels";
+      desc = "Number of conductance levels to allocate";
+      fieldwidth = 1;
+    };
+    field { sw = rw; hw = r;
+      name = "BL DAC SET Level";
+      desc = "BL/SL DAC level to use for SET during CYCLE/PULSE commands";
+      fieldwidth = BSL_DAC_BITS_N;
+    } bl_dac_set_lvl_cycle = 0;
+    field { sw = rw; hw = r;
+      name = "WL DAC SET Level";
+      desc = "WL DAC level to use for SET during CYCLE/PULSE commands";
+      fieldwidth = WL_DAC_BITS_N;
+    } wl_dac_set_lvl_cycle = 0;
+    field { sw = rw; hw = r;
+      name = "PW DAC SET Level";
+      desc = "Pulse width to use for SETduring CYCLE/PULSE commands";
+      fieldwidth = PW_BITS_N;
+    } pw_set_cycle = 0;
+    field { sw = rw; hw = r;
+      name = "BL DAC RST Level";
+      desc = "BL/SL DAC level to use for RESET during CYCLE/PULSE commands";
+      fieldwidth = BSL_DAC_BITS_N;
+    } bl_dac_rst_lvl_cycle = 0;
+    field { sw = rw; hw = r;
+      name = "WL DAC RST Level";
+      desc = "WL DAC level to use for RESET during CYCLE/PULSE commands";
+      fieldwidth = WL_DAC_BITS_N;
+    } wl_dac_rst_lvl_cycle = 0;
+    field { sw = rw; hw = r;
+      name = "PW DAC RST Level";
+      desc = "Pulse width to use for RESET during CYCLE/PULSE commands";
+      fieldwidth = PW_BITS_N;
+    } pw_rst_cycle = 0;
+    field { sw = rw; hw = r;
+      name = "SET First";
+      desc = "Whether to SET (1) or RESET (0) first during CYCLE/PULSE/WRITE commands";
+      fieldwidth = 1;
+    } set_first = 0;
+    field { sw = rw; hw = r;
+      name = "Data In Mask";
+      desc = "Mask for the Data In (DI) to ignore certain bits during operations";
+      fieldwidth = WORD_SIZE;
+    } di_init_mask = 0;
+    field { sw = rw; hw = r;
+      name = "Ignore Failures";
+      desc = "Whether to ignore failures during programming";
+      fieldwidth = 1;
+    } ignore_failures = 0;
+    field { sw = rw; hw = r;
+      name = "Keep All DACs On";
+      desc = "Whether to keep all DACs on during programming";
+      fieldwidth = 1;
+    } all_dacs_on = 0;
+    field { sw = rw; hw = r;
+      name = "Idle to Init Write Setup Cycles";
+      desc = "Number of cycles to wait in INIT_WRITE state before starting the write, allowing for dynamically adjustable setup time";
+      fieldwidth = SETUP_CYC_BITS_N;
+    } idle_to_init_write_setup_cycles = 0;
+    field { sw = rw; hw = r;
+      name = "Idle to Init Read Setup Cycles";
+      desc = "Number of cycles to wait in INIT_READ state before starting the read, allowing for dynamically adjustable setup time";
+      fieldwidth = SETUP_CYC_BITS_N;
+    } idle_to_init_read_setup_cycles = 0;
+    field { sw = rw; hw = r;
+      name = "Read to Init Write Setup Cycles";
+      desc = "Number of cycles to wait in INIT_WRITE state before starting the write, given that a READ just happened, allowing for dynamically adjustable setup time";
+      fieldwidth = SETUP_CYC_BITS_N;
+    } read_to_init_write_setup_cycles = 0;
+    field { sw = rw; hw = r;
+      name = "Write to Init Read Setup Cycles";
+      desc = "Number of cycles to wait in INIT_READ state before starting the read, given that a WRITE just happened, allowing for dynamically adjustable setup time";
+      fieldwidth = SETUP_CYC_BITS_N;
+    } write_to_init_read_setup_cycles = 0;
+    field { sw = rw; hw = r;
+      name = "Step Read Setup Cycles";
+      desc = "Number of cycles to wait in STEP_READ state before starting the next read, allowing for dynamically adjustable setup time";
+      fieldwidth = SETUP_CYC_BITS_N;
+    } step_read_setup_cycles = 0;
+    field { sw = rw; hw = r;
+      name = "Step Write Setup Cycles";
+      desc = "Number of cycles to wait in STEP_WRITE state before starting the next write, allowing for dynamically adjustable setup time";
+      fieldwidth = SETUP_CYC_BITS_N;
+    } step_write_setup_cycles = 0;
+    field { sw = rw; hw = r;
+      name = "Post Read Setup Cycles";
+      desc = "Number of cycles to wait after READ finishes to account for timing violations";
+      fieldwidth = SETUP_CYC_BITS_N;
+    } post_read_setup_cycles = 0;
+  };
+  reg rram_addr_reg {
+    name = "RRAM Address Register";
+    desc = "Register containing the target {start, stop, step} addresses";
+    field { sw = rw; hw = r;
+      name = "RRAM Address Start";
+      desc = "Register containing the address of the target RRAM word to start at";
+      fieldwidth = ADDR_BITS_N;
+    } address_start = 0;
+    field { sw = rw; hw = r;
+      name = "RRAM Address Stop";
+      desc = "Register containing the address of the target RRAM word to stop at";
+      fieldwidth = ADDR_BITS_N;
+    } address_stop = 0;
+    field { sw = rw; hw = r;
+      name = "RRAM Address Step";
+      desc = "Register containing the stride of the target RRAM word address";
+      fieldwidth = ADDR_BITS_N;
+    } address_step = 0;
+  };
+  reg read_data_reg {
+    name = "Read Data Register";
+    desc = "Register containing the data read from the RRAM array";
+    field { sw = r; hw = w;
+      name = "Read Data";
+      desc = "Data read from the RRAM array";
+      fieldwidth = WORD_SIZE;
+    } read_data_bits = 0;
+  };
+  reg write_data_reg {
+    name = "Write Data Register";
+    desc = "Register containing the data to be written to the RRAM array";
+    field { sw = rw; hw = r;
+      name = "Write Data";
+      desc = "Data to be written to the RRAM array";
+      fieldwidth = WORD_SIZE;
+    } write_data_bits = 0;
+  };
+  reg fsm_cmd_reg {
+    name = "FSM Command Register";
+    desc = "Register containing the current FSM command";
+    field { sw = rw; hw = r;
+      name = "FSM Command Opcode";
+      desc = "Current FSM command opcode";
+      fieldwidth = OP_CODE_BITS_N;
+      encode = opcode_enum;
+    } opcode = 0;
+    field { sw = rw; hw = r;
+      name = "Loop Mode";
+      desc = "Whether to loop the current command";
+      fieldwidth = 1;
+    } loop_mode = 0;
+    field { sw = rw; hw = r;
+      name = "Check Level 63";
+      desc = "Whether to perform READ on level 63 during programming (1 = skip and assume below, 0 = READ to check)";
+      fieldwidth = 1;
+    } check63 = 0;
+    field { sw = rw; hw = r;
+      name = "Use Checkerboard Data";
+      desc = "Whether to use checkerboard data during programming";
+      fieldwidth = 1;
+    } use_cb_data = 0;
+    field { sw = rw; hw = r;
+      name = "Use LFSR Data";
+      desc = "Whether to use LFSR data during programming";
+      fieldwidth = 1;
+    } use_lfsr_data = 0;
+    field { sw = rw; hw = r;
+      name = "Perform on Multiple Addresses";
+      desc = "Whether to perform the current command on multiple addresses using address {start, stop, step}";
+      fieldwidth = 1;
+    } use_multi_addrs = 0;
+  };
+  reg fsm_diag_reg {
+    name = "FSM Diagnostic Register 1";
+    desc = "Register containing the current FSM diagnostic information";
+    field { sw = r; hw = w;
+      name = "Success Count";
+      desc = "Current number of addresses written to during current/last operation";
+      fieldwidth = FSM_DIAG_COUNT_BITS_N;
+    } success_counter = 0;
+    field { sw = r; hw = w;
+      name = "Failure Count";
+      desc = "Current number of address levels failed to write to during current/last operation";
+      fieldwidth = FSM_DIAG_COUNT_BITS_N;
+    } failure_counter = 0;
+    field { sw = r; hw = w;
+      name = "Read Count";
+      desc = "Current number of READs performed on words during current/last operation";
+      fieldwidth = FSM_DIAG_COUNT_BITS_N;
+    } read_counter = 0;
+    field { sw = r; hw = w;
+      name = "SET Count";
+      desc = "Current number of SETs performed on words during current/last operation";
+      fieldwidth = FSM_DIAG_COUNT_BITS_N;
+    } set_counter = 0;
+    field { sw = r; hw = w;
+      name = "RESET Count";
+      desc = "Current number of RESETs performed on words during current/last operation";
+      fieldwidth = FSM_DIAG_COUNT_BITS_N;
+    } reset_counter = 0;
+  };
+  reg fsm_diag2_reg {
+    name = "FSM Diagnostic Register 2";
+    desc = "Register containing the current FSM diagnostic information";
+    field { sw = r; hw = w;
+      name = "Cycle Count";
+      desc = "Number of cycles since current/last operation was initiated";
+      fieldwidth = FSM_DIAG_COUNT_BITS_N;
+    } cycle_counter = 0;
+    field { sw = r; hw = w;
+      name = "Read Bits Count";
+      desc = "Current number of bits read from the RRAM array during current/last operation";
+      fieldwidth = FSM_DIAG_COUNT_BITS_N;
+    } read_bits_counter = 0;
+    field { sw = r; hw = w;
+      name = "SET Bits Count";
+      desc = "Current number of bits SET in the RRAM array during current/last operation";
+      fieldwidth = FSM_DIAG_COUNT_BITS_N;
+    } set_bits_counter = 0;
+    field { sw = r; hw = w;
+      name = "RESET Bits Count";
+      desc = "Current number of bits RESET in the RRAM array during current/last operation";
+      fieldwidth = FSM_DIAG_COUNT_BITS_N;
+    } reset_bits_counter = 0;
+  };
+  reg lvl_settings_reg {
+    name = "Level Settings Register";
+    desc = "Register containing all of the settings for one allocated conductance level";
+    field { sw = rw; hw = r;
+      name = "ADC Clamp Reference Level";
+      desc = "ADC clamp reference DAC level to use";
+      fieldwidth = ADC_BITS_N;
+    } adc_clamp_ref_lvl = 0;
+    field { sw = rw; hw = r;
+      name = "ADC READ DAC Level";
+      desc = "ADC READ DAC level to use";
+      fieldwidth = READ_DAC_BITS_N;
+    } adc_read_dac_lvl = 0;
+    field { sw = rw; hw = r;
+      name = "ADC Upper Read Reference Level";
+      desc = "ADC upper read reference DAC level to use";
+      fieldwidth = ADC_BITS_N;
+    } adc_upper_read_ref_lvl = 0;
+    field { sw = rw; hw = r;
+      name = "ADC Upper Write Reference Level";
+      desc = "ADC upper write reference DAC level to use";
+      fieldwidth = ADC_BITS_N;
+    } adc_upper_write_ref_lvl = 0;
+    field { sw = rw; hw = r;
+      name = "ADC Lower Write Reference Level";
+      desc = "ADC lower write reference DAC level to use";
+      fieldwidth = ADC_BITS_N;
+    } adc_lower_write_ref_lvl = 0;
+    field { sw = rw; hw = r;
+      name = "BL DAC SET Level Start";
+      desc = "BL DAC level to start at for SET during WRITE commands";
+      fieldwidth = BSL_DAC_BITS_N;
+    } bl_dac_set_lvl_start = 0;
+    field { sw = rw; hw = r;
+      name = "BL DAC SET Level Stop";
+      desc = "BL DAC level to stop at for SET during WRITE commands";
+      fieldwidth = BSL_DAC_BITS_N;
+    } bl_dac_set_lvl_stop = 0;
+    field { sw = rw; hw = r;
+      name = "BL DAC SET Level Step";
+      desc = "BL DAC level to step at for SET during WRITE commands";
+      fieldwidth = BSL_DAC_BITS_N;
+    } bl_dac_set_lvl_step = 0;
+    field { sw = rw; hw = r;
+      name = "WL DAC SET Level Start";
+      desc = "WL DAC level to start at for SET during WRITE commands";
+      fieldwidth = WL_DAC_BITS_N;
+    } wl_dac_set_lvl_start = 0;
+    field { sw = rw; hw = r;
+      name = "WL DAC SET Level Stop";
+      desc = "WL DAC level to stop at for SET during WRITE commands";
+      fieldwidth = WL_DAC_BITS_N;
+    } wl_dac_set_lvl_stop = 0;
+    field { sw = rw; hw = r;
+      name = "WL DAC SET Level Step";
+      desc = "WL DAC level to step at for SET during WRITE commands";
+      fieldwidth = WL_DAC_BITS_N;
+    } wl_dac_set_lvl_step = 0;
+    field { sw = rw; hw = r;
+      name = "PW SET Start";
+      desc = "Pulse width to start at for SET during WRITE commands";
+      fieldwidth = PW_BITS_N;
+    } pw_set_start = 0;
+    field { sw = rw; hw = r;
+      name = "PW SET Stop";
+      desc = "Pulse width to stop at for SET during WRITE commands";
+      fieldwidth = PW_BITS_N;
+    } pw_set_stop = 0;
+    field { sw = rw; hw = r;
+      name = "PW SET Step";
+      desc = "Pulse width to step at for SET during WRITE commands";
+      fieldwidth = PW_BITS_N;
+    } pw_set_step = 0;
+    field { sw = rw; hw = r;
+      name = "Loop Order SET";
+      desc = "Code for loop order to use for SET during WRITE commands";
+      fieldwidth = LOOP_BITS_N;
+      encode = loop_order_enum;
+    } loop_order_set = 0;
+    field { sw = rw; hw = r;
+      name = "SL DAC RESET Level Start";
+      desc = "SL DAC level to start at for RESET during WRITE commands";
+      fieldwidth = BSL_DAC_BITS_N;
+    } sl_dac_rst_lvl_start = 0;
+    field { sw = rw; hw = r;
+      name = "SL DAC RESET Level Stop";
+      desc = "SL DAC level to stop at for RESET during WRITE commands";
+      fieldwidth = BSL_DAC_BITS_N;
+    } sl_dac_rst_lvl_stop = 0;
+    field { sw = rw; hw = r;
+      name = "SL DAC RESET Level Step";
+      desc = "SL DAC level to step at for RESET during WRITE commands";
+      fieldwidth = BSL_DAC_BITS_N;
+    } sl_dac_rst_lvl_step = 0;
+    field { sw = rw; hw = r;
+      name = "WL DAC RESET Level Start";
+      desc = "WL DAC level to start at for RESET during WRITE commands";
+      fieldwidth = WL_DAC_BITS_N;
+    } wl_dac_rst_lvl_start = 0;
+    field { sw = rw; hw = r;
+      name = "WL DAC RESET Level Stop";
+      desc = "WL DAC level to stop at for RESET during WRITE commands";
+      fieldwidth = WL_DAC_BITS_N;
+    } wl_dac_rst_lvl_stop = 0;
+    field { sw = rw; hw = r;
+      name = "WL DAC RESET Level Step";
+      desc = "WL DAC level to step at for RESET during WRITE commands";
+      fieldwidth = WL_DAC_BITS_N;
+    } wl_dac_rst_lvl_step = 0;
+    field { sw = rw; hw = r;
+      name = "PW RESET Start";
+      desc = "Pulse width to start at for RESET during WRITE commands";
+      fieldwidth = PW_BITS_N;
+    } pw_rst_start = 0;
+    field { sw = rw; hw = r;
+      name = "PW RESET Stop";
+      desc = "Pulse width to stop at for RESET during WRITE commands";
+      fieldwidth = PW_BITS_N;
+    } pw_rst_stop = 0;
+    field { sw = rw; hw = r;
+      name = "PW RESET Step";
+      desc = "Pulse width to step at for RESET during WRITE commands";
+      fieldwidth = PW_BITS_N;
+    } pw_rst_step = 0;
+    field { sw = rw; hw = r;
+      name = "Loop Order RESET";
+      desc = "Code for loop order to use for RESET during WRITE commands";
+      fieldwidth = LOOP_BITS_N;
+      encode = loop_order_enum;
+    } loop_order_rst = 0;
+  };
+  reg fsm_state_reg {
+    name = "FSM State Register";
+    desc = "Register containing the current FSM state";
+    field { sw = rw; hw = r;
+      name = "FSM State";
+      desc = "Current FSM state";
+      fieldwidth = FSM_STATE_BITS_N;
+    } state = 0;
+    field { sw = rw; hw = r;
+      name = "FSM Next State";
+      desc = "Next FSM state";
+      fieldwidth = FSM_STATE_BITS_N;
+    } next_state = 0;
+    field { sw = rw; hw = r;
+      name = "aclk";
+      desc = "Write enable";
+      fieldwidth = 1;
+    } aclk = 0;
+    field { sw = rw; hw = r;
+      name = "bl_en";
+      desc = "BL enable";
+      fieldwidth = 1;
+    } bl_en = 0;
+    field { sw = rw; hw = r;
+      name = "bleed_en";
+      desc = "Bleed enable";
+      fieldwidth = 1;
+    } bleed_en = 0;
+    field { sw = rw; hw = r;
+      name = "bsl_dac_config";
+      desc = "BL/SL DAC level";
+      fieldwidth = BSL_DAC_BITS_N;
+    } bsl_dac_config = 0;
+    field { sw = rw; hw = r;
+      name = "bsl_dac_en";
+      desc = "BL/SL DAC enable";
+      fieldwidth = 1;
+    } bsl_dac_en = 0;
+    field { sw = rw; hw = r;
+      name = "clamp_ref";
+      desc = "ADC clamp reference DAC level";
+      fieldwidth = ADC_BITS_N;
+    } clamp_ref = 0;
+    field { sw = rw; hw = r;
+      name = "di";
+      desc = "Data in mask";
+      fieldwidth = WORD_SIZE;
+    } di = 0;
+    field { sw = rw; hw = r;
+      name = "read_dac_config";
+      desc = "ADC READ DAC level";
+      fieldwidth = READ_DAC_BITS_N;
+    } read_dac_config = 0;
+    field { sw = rw; hw = r;
+      name = "read_dac_en";
+      desc = "ADC READ DAC enable";
+      fieldwidth = 1;
+    } read_dac_en = 0;
+    field { sw = rw; hw = r;
+      name = "read_ref";
+      desc = "ADC read reference DAC level";
+      fieldwidth = ADC_BITS_N;
+    } read_ref = 0;
+    field { sw = rw; hw = r;
+      name = "rram_addr";
+      desc = "RRAM word address";
+      fieldwidth = ADDR_BITS_N;
+    } rram_addr = 0;
+    field { sw = rw; hw = r;
+      name = "sa_clk";
+      desc = "SA clock enable";
+      fieldwidth = 1;
+    } sa_clk = 0;
+    field { sw = rw; hw = r;
+      name = "sa_en";
+      desc = "SA enable";
+      fieldwidth = 1;
+    } sa_en = 0;
+    field { sw = rw; hw = r;
+      name = "set_rst";
+      desc = "Whether to SET (1) or RESET (0)";
+      fieldwidth = 1;
+    } set_rst = 0;
+    field { sw = rw; hw = r;
+      name = "sl_en";
+      desc = "SL enable";
+      fieldwidth = 1;
+    } sl_en = 0;
+    field { sw = rw; hw = r;
+      name = "we";
+      desc = "Write enable";
+      fieldwidth = 1;
+    } we = 0;
+    field { sw = rw; hw = r;
+      name = "wl_dac_config";
+      desc = "WL DAC level";
+      fieldwidth = WL_DAC_BITS_N;
+    } wl_dac_config = 0;
+    field { sw = rw; hw = r;
+      name = "wl_dac_en";
+      desc = "WL DAC enable";
+      fieldwidth = 1;
+    } wl_dac_en = 0;
+    field { sw = rw; hw = r;
+      name = "wl_en";
+      desc = "WL enable";
+      fieldwidth = 1;
+    } wl_en = 0;
+    field { sw = rw; hw = r;
+      name = "Range Index";
+      desc = "Current conductance range index";
+      fieldwidth = PROG_CNFG_RANGES_LOG2_N;
+    } rangei = 0;
+    field { sw = rw; hw = r;
+      name = "Pulse Width";
+      desc = "Current pulse width to use";
+      fieldwidth = PW_BITS_N;
+    } pw = 0;
+    field { sw = rw; hw = r;
+      name = "Counter";
+      desc = "Current counter value";
+      fieldwidth = PW_FULL_BITS_N;
+    } counter = 0;
+    field { sw = rw; hw = r;
+      name = "Maximum Programming Attempts";
+      desc = "Maximum number of programming attempts before giving up";
+      fieldwidth = MAX_ATTEMPTS_BITS_N;
+    } max_attempts = 0;
+    field { sw = rw; hw = r;
+      name = "Is First Try";
+      desc = "Whether this is the first try of the current operation";
+      fieldwidth = 1;
+    } is_first_try = 0;
+    field { sw = rw; hw = r;
+      name = "Counter Increment Enable";
+      desc = "Whether to increment the counter";
+      fieldwidth = 1;
+    } counter_incr_en = 0;
+    field { sw = rw; hw = r;
+      name = "Counter Reset";
+      desc = "Whether to reset the counter";
+      fieldwidth = 1;
+    } counter_rst = 0;
+    field { sw = rw; hw = r;
+      name = "Attempts Counter Increment Enable";
+      desc = "Whether to increment the attempts counter";
+      fieldwidth = 1;
+    } attempts_counter_incr_en = 0;
+    field { sw = rw; hw = r;
+      name = "Attempts Counter Reset";
+      desc = "Whether to reset the attempts counter";
+      fieldwidth = 1;
+    } attempts_counter_rst = 0;
+    field { sw = rw; hw = r;
+      name = "Next Is First Try";
+      desc = "The next value of is_first_try";
+      fieldwidth = 1;
+    } next_is_first_try = 0;
+    field { sw = rw; hw = r;
+      name = "Next Range Index";
+      desc = "The next value of rangei";
+      fieldwidth = PROG_CNFG_RANGES_LOG2_N;
+    } next_rangei = 0;
+  };
+
+  // Register file definitions
+  regfile read_data_regfile {
+    name = "Read Data Register File";
+    desc = "Register file containing the data read from the RRAM array";
+    read_data_reg read_data[PROG_CNFG_RANGES_LOG2_N];
+  };
+  regfile write_data_regfile {
+    name = "Write Data Register File";
+    desc = "Register file containing the data to be written to the RRAM array";
+    write_data_reg write_data [PROG_CNFG_RANGES_LOG2_N];
+  };
+  regfile lvl_settings_regfile {
+    name = "Level Settings Register File";
+    desc = "Register file containing the settings for each allocated level";
+    lvl_settings_reg lvl_settings [PROG_CNFG_RANGES_N];
+  };
+  regfile ember_regfile {
+    name = "EMBER Register File";
+    desc = "Register file containing all of the config registers for the EMBER macro";
+    lvl_settings_regfile lvl_settings;
+    global_settings_reg global_settings;
+    rram_addr_reg rram_addr;
+    write_data_regfile write_data;
+    fsm_cmd_reg fsm_cmd;
+    fsm_state_reg fsm_state;
+    fsm_diag_reg fsm_diag;
+    read_data_regfile read_data;
+    fsm_diag2_reg fsm_diag2;
+    apb_reset_reg apb_reset @0x3e0;
+  } ember_rf;
+};
